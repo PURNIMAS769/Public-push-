@@ -1,26 +1,19 @@
-fetch dt.entity.cloud_application_namespace
-| fields entity.name, id
+timeseries restarts = sum(dt.kubernetes.container.restarts),
+by:{dt.entity.cloud_application_namespace},
+from:-24h
+| fieldsAdd namespace = entityName(dt.entity.cloud_application_namespace)
+| fieldsAdd total = arraySum(restarts)
+| filter total > 0
+| fields namespace, total
+| limit 20
 
 
 --------------------------------
 
 
-timeseries restarts = sum(dt.kubernetes.container.restarts),
-by:{dt.entity.cloud_application_namespace},
-from:-24h
-| fieldsAdd namespace = entityName(dt.entity.cloud_application_namespace)
-| filter namespace == "app00002734-paperless-inventory"
-| fields timeframe, interval, dt.entity.cloud_application_namespace, restarts
-
+timeseries restarts = sum(dt.kubernetes.container.restarts), from:-24h
 
 ---------------------------------------
-
-
-timeseries restarts = sum(dt.kubernetes.container.restarts),
-by:{dt.entity.cloud_application_namespace},
-from:-24h
-| fieldsAdd namespace = entityName(dt.entity.cloud_application_namespace)
-| filter namespace == "app00002734-paperless-inventory"
-| fieldsAdd total_restarts = arraySum(restarts)
-| fields dt.entity.cloud_application_namespace, total_restarts
-| sort total_restarts desc
+fetch metric.series
+| filter metric.key == "dt.kubernetes.container.restarts"
+| limit 5
