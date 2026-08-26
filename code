@@ -1,17 +1,8 @@
-timeseries pod_count = sum(dt.kubernetes.pods),
-by:{k8s.namespace.name},
-from:-15m
+timeseries
+    total_pods = sum(dt.kubernetes.pods),
+    running_pods = sum(dt.kubernetes.pods, filter: pod_phase == "Running"),
+    by:{k8s.namespace.name},
+    from:-15m
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd current_count = arrayLast(pod_count)
-| fields k8s.namespace.name, current_count
-
-
-
-----------------------------------------------
-
-timeseries running_pods = sum(dt.kubernetes.pods, filter: pod_phase == "Running"),
-by:{k8s.namespace.name},
-from:-15m
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd current_running = arrayLast(running_pods)
-| fields k8s.namespace.name, current_running
+| fieldsAdd current_total = arrayLast(total_pods), current_running = arrayLast(running_pods)
+| fields k8s.namespace.name, current_total, current_running
