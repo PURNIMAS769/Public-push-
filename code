@@ -1,20 +1,6 @@
-fetch dt.davis.problems, from:-24h
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter in("APMID:APP00002734", entity_tags)
-| filter contains(root_cause_entity_name, "ims_pi")
-    or contains(root_cause_entity_name, "PI_DATA_LOAD")
-    or contains(root_cause_entity_name, "pi_data_cluster")
-    or contains(root_cause_entity_name, "Prompt_Pay")
-    or contains(root_cause_entity_name, "RPTPGPPDA")
-    or contains(root_cause_entity_name, "MSSQL")
-    or contains(root_cause_entity_name, "wpisq")
-| summarize
-    problem_title = takeFirst(event.name),
-    severity = takeFirst(event.category),
-    root_cause = takeFirst(root_cause_entity_name),
-    start_time = takeFirst(event.start),
-by:{display_id}
-| fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
-| fieldsAdd age_formatted = concat(toString(floor(total_seconds / 3600)), "h ", toString(floor((total_seconds % 3600) / 60)), "m")
-| sort start_time desc
-| fields display_id, problem_title, severity, root_cause, age_formatted
+fetch dt.entity.process_group_instance
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| filter contains(entity.name, "MSSQL")
+| fieldsAdd host = belongs_to[dt.entity.host]
+| fieldsAdd host_name = entityName(belongs_to[dt.entity.host])
+| fields entity.name, host_name
