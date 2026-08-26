@@ -1,7 +1,33 @@
-fetch events, from:-60d
-| filter event.provider == "KUBERNETES_EVENT"
+timeseries cpu_used = sum(dt.kubernetes.container.cpu_usage),
+by:{k8s.namespace.name, k8s.container.name},
+from:-24h
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
-| filter contains(event.name, "restart") or contains(event.name, "Restart") or contains(event.name, "Kill") or contains(event.name, "BackOff")
-| sort timestamp desc
-| fields timestamp, k8s.pod.name, event.name, event.description
-| limit 10
+| fields timeframe, interval, k8s.container.name, cpu_used
+
+
+---------------------------
+timeseries mem_used = sum(dt.kubernetes.container.memory_working_set),
+by:{k8s.namespace.name, k8s.container.name},
+from:-24h
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| fields timeframe, interval, k8s.container.name, mem_used
+----------------------------------
+timeseries
+    cpu_used = sum(dt.kubernetes.container.cpu_usage, default:0),
+    cpu_limit = sum(dt.kubernetes.container.cpu_limit, default:0),
+    by:{k8s.namespace.name, k8s.container.name},
+    from:-24h
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| fieldsAdd cpu_saturation_pct = 100.0 * cpu_used[] / cpu_limit[]
+| fields timeframe, interval, k8s.container.name, cpu_saturation_pct
+
+
+---------------------------------------------------
+timeseries
+    mem_used = sum(dt.kubernetes.container.memory_working_set, default:0),
+    mem_limit = sum(dt.kubernetes.container.memory_limit, default:0),
+    by:{k8s.namespace.name, k8s.container.name},
+    from:-24h
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| fieldsAdd mem_saturation_pct = 100.0 * mem_used[] / mem_limit[]
+| fields timeframe, interval, k8s.container.name, mem_saturation_pct
