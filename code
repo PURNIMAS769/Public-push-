@@ -1,9 +1,5 @@
-timeseries restarts = sum(dt.kubernetes.container.restarts),
-by:{dt.entity.cloud_application_namespace},
-from:-24h
-| fieldsAdd namespace = entityName(dt.entity.cloud_application_namespace)
-| filter contains(namespace, "app00002734") or contains(namespace, "paperless")
-| fields timeframe, interval, namespace, restarts
+fetch dt.entity.cloud_application_namespace
+| fields entity.name, id
 
 
 --------------------------------
@@ -13,22 +9,17 @@ timeseries restarts = sum(dt.kubernetes.container.restarts),
 by:{dt.entity.cloud_application_namespace},
 from:-24h
 | fieldsAdd namespace = entityName(dt.entity.cloud_application_namespace)
-| filter contains(namespace, "app00002734") or contains(namespace, "paperless")
-| fieldsAdd total_restarts = arraySum(restarts)
-| fields namespace, total_restarts
-| sort total_restarts desc
+| fieldsAdd total = arraySum(restarts)
+| filter total > 0
+| fields namespace, total
 
 
 ---------------------------------------
 
 
-timeseries
-    running_pods = sum(dt.kubernetes.pods, filter: pod_phase == "Running"),
-    desired_pods = avg(dt.kubernetes.workload.pods_desired),
-    by:{dt.entity.cloud_application},
-    from:-15m
+timeseries restarts = sum(dt.kubernetes.container.restarts),
+by:{dt.entity.cloud_application},
+from:-24h
 | fieldsAdd deployment_name = entityName(dt.entity.cloud_application)
-| filter arrayIndexOf(deployment_name, "pprlessinv") >= 0 or contains(deployment_name, "pprlessinv")
-| fieldsAdd running = arrayLast(running_pods), desired = arrayLast(desired_pods)
-| fieldsAdd status_pct = round((running / desired) * 100, decimals:1)
-| fields deployment_name, running, desired, status_pct
+| filter contains(deployment_name, "pprlessinv")
+| fields timeframe, interval, deployment_name, restarts
