@@ -1,20 +1,20 @@
 fetch dt.davis.problems, from:-24h
 | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
 | filter in("APMID:APP00002734", entity_tags)
-| filter contains(toString(affected_entity_types), "dt.entity.service")
-    or contains(toString(affected_entity_types), "dt.entity.host")
-    or contains(toString(affected_entity_types), "dt.entity.process_group_instance")
+| filter contains(root_cause_entity_name, "ims_pi")
+    or contains(root_cause_entity_name, "PI_DATA_LOAD")
+    or contains(root_cause_entity_name, "pi_data_cluster")
+    or contains(root_cause_entity_name, "Prompt_Pay")
+    or contains(root_cause_entity_name, "RPTPGPPDA")
+    or contains(root_cause_entity_name, "MSSQL")
+    or contains(root_cause_entity_name, "wpisq")
 | summarize
     problem_title = takeFirst(event.name),
     severity = takeFirst(event.category),
-    status = takeFirst(event.status),
     root_cause = takeFirst(root_cause_entity_name),
-    affected_types = takeFirst(affected_entity_types),
     start_time = takeFirst(event.start),
-    problem_event_id = takeFirst(event.id),
 by:{display_id}
 | fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
-| fieldsAdd hrs = floor(total_seconds / 3600), mins = floor((total_seconds % 3600) / 60)
-| fieldsAdd age_formatted = concat(toString(hrs), "h ", toString(mins), "m")
+| fieldsAdd age_formatted = concat(toString(floor(total_seconds / 3600)), "h ", toString(floor((total_seconds % 3600) / 60)), "m")
 | sort start_time desc
-| fields display_id, problem_title, severity, status, root_cause, affected_types, age_formatted
+| fields display_id, problem_title, severity, root_cause, age_formatted
