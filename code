@@ -1,8 +1,6 @@
-timeseries
-    total_pods = sum(dt.kubernetes.pods),
-    running_pods = sum(dt.kubernetes.pods, filter: pod_phase == "Running"),
-    by:{k8s.namespace.name},
-    from:-15m
+fetch dt.kubernetes.events, from:-60d
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd current_total = arrayLast(total_pods), current_running = arrayLast(running_pods)
-| fields k8s.namespace.name, current_total, current_running
+| filter contains(event.reason, "Restart") or contains(event.reason, "Killing") or contains(event.reason, "BackOff")
+| sort timestamp desc
+| fields timestamp, k8s.pod.name, event.reason, event.message
+| limit 5
