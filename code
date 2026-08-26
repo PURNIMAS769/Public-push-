@@ -1,2 +1,6 @@
-timeseries deadlocks = avg(`sql-server.locks.deadlocks.count`), by:{device.name}
-| filter contains(device.name, "wpisq")
+timeseries deadlocks = sum(`sql-server.locks.deadlocks.count`, rollup: sum),
+by:{device.name},
+from:-7d
+| fieldsAdd total_deadlocks = arraySum(deadlocks)
+| fields device.name, total_deadlocks
+| sort total_deadlocks desc
