@@ -9,17 +9,18 @@ timeseries restarts = sum(dt.kubernetes.container.restarts),
 by:{dt.entity.cloud_application_namespace},
 from:-24h
 | fieldsAdd namespace = entityName(dt.entity.cloud_application_namespace)
-| fieldsAdd total = arraySum(restarts)
-| filter total > 0
-| fields namespace, total
+| filter namespace == "app00002734-paperless-inventory"
+| fields timeframe, interval, dt.entity.cloud_application_namespace, restarts
 
 
 ---------------------------------------
 
 
 timeseries restarts = sum(dt.kubernetes.container.restarts),
-by:{dt.entity.cloud_application},
+by:{dt.entity.cloud_application_namespace},
 from:-24h
-| fieldsAdd deployment_name = entityName(dt.entity.cloud_application)
-| filter contains(deployment_name, "pprlessinv")
-| fields timeframe, interval, deployment_name, restarts
+| fieldsAdd namespace = entityName(dt.entity.cloud_application_namespace)
+| filter namespace == "app00002734-paperless-inventory"
+| fieldsAdd total_restarts = arraySum(restarts)
+| fields dt.entity.cloud_application_namespace, total_restarts
+| sort total_restarts desc
