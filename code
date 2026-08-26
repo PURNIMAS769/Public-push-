@@ -1,6 +1,7 @@
-fetch dt.kubernetes.events, from:-60d
+fetch events, from:-60d
+| filter event.provider == "KUBERNETES_EVENT"
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
-| filter contains(event.reason, "Restart") or contains(event.reason, "Killing") or contains(event.reason, "BackOff")
+| filter contains(event.name, "restart") or contains(event.name, "Restart") or contains(event.name, "Kill") or contains(event.name, "BackOff")
 | sort timestamp desc
-| fields timestamp, k8s.pod.name, event.reason, event.message
-| limit 5
+| fields timestamp, k8s.pod.name, event.name, event.description
+| limit 10
