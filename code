@@ -1,9 +1,2 @@
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| filter contains(entity.name, "MSSQL")
-| fieldsAdd host_id = belongs_to[dt.entity.host]
-| lookup [
-    fetch dt.entity.host
-    | fields id, entity.name
-  ], sourceField: host_id, lookupField: id, fields: { host_name = entity.name }
-| fields entity.name, host_name
+timeseries deadlocks = avg(`sql-server.locks.deadlocks.count`), by:{device.name}
+| filter contains(device.name, "wpisq")
