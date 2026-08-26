@@ -2,5 +2,5 @@ fetch dt.entity.process_group_instance
 | filter arrayIndexOf(tags, "APMID:APP00002734") > -1
 | filter contains(entity.name, "MSSQL")
 | fieldsAdd host = belongs_to[dt.entity.host]
-| fieldsAdd host_name = entityName(belongs_to[dt.entity.host])
+| fieldsAdd host_name = entityName(host)
 | fields entity.name, host_name
