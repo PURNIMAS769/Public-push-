@@ -5,5 +5,5 @@ fetch dt.entity.host
 | expand tag_list
 | filter startsWith(tag_list, "APPName:")
 | fieldsAdd app_name = splitString(tag_list, ":")[1]
-| summarize hostCount = count(), by:{app_name}
-| sort hostCount desc
+| fields `Host Name` = entity.name, `OS Type` = osType, `Application Name` = app_name, `Host ID` = id
+| sort `Application Name` asc, `Host Name` asc
