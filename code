@@ -1,35 +1,43 @@
-timeseries used_pct = avg(dt.host.memory.usage, scalar:true),
-used = avg(dt.host.memory.used, scalar:true),
-recl = avg(dt.host.memory.recl, scalar:true),
-swap_used = avg(dt.host.memory.swap.used, scalar:true),
-swap_total = avg(dt.host.memory.swap.total, scalar:true),
-page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
-iowait = avg(dt.host.cpu.iowait, scalar:true),
-by: { dt.entity.host },
-filter: { in(entityAttr(dt.entity.host, "osType"), array("LINUX")) and in(dt.entity.host, $Host) },
-from:-7d, interval:1h
-| fieldsAdd host.name = entityName(dt.entity.host)
-| fieldsAdd active_memory_gb = used / 1024 / 1024 / 1024
-| fieldsAdd total_memory_footprint_gb = (used + recl) / 1024 / 1024 / 1024
-| fieldsAdd reusable_cache_gb = recl / 1024 / 1024 / 1024
-| fieldsAdd swap_used_gb = swap_used / 1024 / 1024 / 1024
-| fieldsAdd swap_pct = if(swap_total > 0, (swap_used / swap_total) * 100, else:0)
-| fieldsAdd health_status = if(used_pct > 80 and page_faults > 20, "OVERLOADED (Usage+PageFaults)",
-else:if(swap_pct > 10 and iowait > 5, "OVERLOADED (Swap+IOWait)",
-else:"HEALTHY"))
-| fieldsAdd used_pct_rounded = round(used_pct, decimals:1)
-| fieldsAdd page_faults_rounded = round(page_faults, decimals:2)
-| fieldsAdd swap_pct_rounded = round(swap_pct, decimals:1)
-| fieldsAdd iowait_rounded = round(iowait, decimals:1)
-| fields `Host Name` = host.name,
-`Active Memory In Use (GB)` = active_memory_gb,
-`Memory Usage %` = used_pct_rounded,
-`Total Memory Footprint incl. Cache (GB)` = total_memory_footprint_gb,
-`Reusable Cache Reclaimable (GB)` = reusable_cache_gb,
-`Disk Swap In Use (GB)` = swap_used_gb,
-`Swap Used %` = swap_pct_rounded,
-`CPU I/O Wait %` = iowait_rounded,
-`Memory Fetch Delays (Page Faults/sec)` = page_faults_rounded,
-`Overall Health` = health_status
-| sort `Memory Usage %` desc
-| limit 25
+timeseries diskfree_pct = avg(dt.host.disk.free), by: { dt.entity.host, dt.entity.disk }, from:-30d
+| fieldsAdd host_name = entityName(dt.entity.host)
+| fieldsAdd disk_name = entityName(dt.entity.disk)
+| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
+| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
+| fieldsAdd disk_usage_pct = 100 - diskfree_pct[]
+| fields timeframe, interval, host_name, disk_name, disk_usage_pct, dt.entity.host, dt.entity.disk
+
+
+
+
+-----------------------------------------------
+timeseries {
+    used_memory = avg(dt.kubernetes.resourcequota.requests_memory_used),
+    max_memory = avg(dt.kubernetes.resourcequota.requests_memory)
+},
+by: {k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name},
+from: -30d
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| fieldsAdd memory_used_percent = 100.0 * used_memory[] / max_memory[]
+| fields timeframe, interval, k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name, memory_used_percent
+
+
+
+
+-----------------------------------------------------
+
+
+timeseries requests = sum(dt.service.request.count),
+by:{dt.entity.service},
+from:-30d
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00002734\")"))
+| fieldsAdd service_name = entityName(dt.entity.service)
+| fieldsAdd total_check = arraySum(requests)
+| filter isNotNull(total_check) and total_check > 0
+| fields timeframe, interval, service_name, requests
+
+
+----------------------------------------------------------
+
+timeseries deadlocks = avg(`sql-server.locks.deadlocks.count`), by:{device.name}, from:-30d
+| filter contains(device.name, "wpisq")
+| fields timeframe, interval, device.name, deadlocks
