@@ -1,115 +1,21 @@
-timeseries cpu_usage = avg(dt.host.cpu.usage, scalar: true, default: 0), by: { dt.entity.host }
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fields host_name, cpu_usage, dt.entity.host
-| sort cpu_usage desc
-| limit 20
-
-
-
-timeseries mem_usage_pct = avg(dt.host.memory.usage, scalar: true, default: 0), by: { dt.entity.host }
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fields host_name, mem_usage_pct, dt.entity.host
-| sort mem_usage_pct desc
-| limit 20
-
-
-timeseries
-    mem_used = avg(dt.host.memory.used, scalar: true, default: 0),
-    mem_avail = avg(dt.host.memory.avail.bytes, scalar: true, default: 0),
-    by: { dt.entity.host }
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fieldsAdd mem_total = mem_used + mem_avail
-| fieldsAdd mem_used_GB = mem_used / 1073741824
-| fieldsAdd mem_free_GB = mem_avail / 1073741824
-| fieldsAdd mem_total_GB = mem_total / 1073741824
-| fields host_name, mem_used_GB, mem_free_GB, mem_total_GB, dt.entity.host
-| sort mem_used_GB desc
-| limit 20
-
-
-
-
-
-
-timeseries
-    read_time = avg(dt.host.disk.read_time),
-    write_time = avg(dt.host.disk.write_time),
-    queue_len = avg(dt.host.disk.queue_length),
-    by: { dt.entity.host },
-    from: -24h
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fieldsAdd `Read Latency (ms)` = round(arrayAvg(read_time), decimals: 2)
-| fieldsAdd `Write Latency (ms)` = round(arrayAvg(write_time), decimals: 2)
-| fieldsAdd `Queue Length` = round(arrayAvg(queue_len), decimals: 2)
-| fieldsAdd `Status` =
-    if(`Read Latency (ms)` >= 20 or `Write Latency (ms)` >= 20, "🔴 High Latency",
-    else: if(`Read Latency (ms)` >= 10 or `Write Latency (ms)` >= 10, "🟠 Moderate",
-    else: "🟢 Healthy"))
-| fields
-    `Host` = host_name,
-    `Read Latency (ms)`,
-    `Write Latency (ms)`,
-    `Queue Length`,
-    `Status`, dt.entity.host
-| sort `Read Latency (ms)` desc
-| limit 20
-
-
-
-
-timeseries
-    bytes_read = avg(dt.host.disk.bytes_read, scalar: true, default: 0),
-    bytes_written = avg(dt.host.disk.bytes_written, scalar: true, default: 0),
-    by: { dt.entity.host }
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fields host_name, bytes_read, bytes_written, dt.entity.host
-| sort bytes_read desc
-| limit 20
-
-
-
-
-timeseries diskfree_pct = avg(dt.host.disk.free), by: { dt.entity.host, dt.entity.disk }
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fieldsAdd disk_usage_pct = 100 - arrayAvg(diskfree_pct)
-| fields host_name, disk_name, disk_usage_pct, dt.entity.disk, dt.entity.host
-| sort disk_usage_pct desc
-| limit 50
-
-
-
-timeseries
-    bytes_rx = sum(dt.host.net.nic.bytes_rx),
-    bytes_tx = sum(dt.host.net.nic.bytes_tx),
-    errors_rx = sum(dt.host.net.nic.packets.errors_rx),
-    errors_tx = sum(dt.host.net.nic.packets.errors_tx),
-    by: { dt.entity.host },
-    from: -24h
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fieldsAdd `Ingress (MB)` = round(arraySum(bytes_rx) / 1048576, decimals: 2)
-| fieldsAdd `Egress (MB)` = round(arraySum(bytes_tx) / 1048576, decimals: 2)
-| fieldsAdd `Errors (RX+TX)` = round(arraySum(errors_rx) + arraySum(errors_tx), decimals: 0)
-| fieldsAdd `Status` = if(`Errors (RX+TX)` > 0, "🔴 Errors Detected", else: "🟢 Clean")
-| fields
-    `Host` = host_name,
-    `Ingress (MB)`,
-    `Egress (MB)`,
-    `Errors (RX+TX)`,
-    `Status`, dt.entity.host
-| sort `Ingress (MB)` desc
-| limit 20
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| fields id, host_name = entity.name
+| join [
+    fetch dt.davis.problems, from: -30d
+    | filter event.status == "ACTIVE"
+    | expand affected_entity_ids
+    | summarize
+        problem_count = countDistinct(event.id),
+        categories = collectDistinct(event.category),
+    by: { affected_entity_ids }
+  ],
+  kind: leftOuter,
+  on: left[id] == right[affected_entity_ids],
+  fields: { problem_count, categories }
+| fieldsAdd open_problem_count = if(isNull(problem_count), 0, else: problem_count)
+| fieldsAdd host_state = if(arrayIndexOf(categories, "AVAILABILITY") > -1, "UNAVAILABLE",
+    else: if(open_problem_count > 0, "UNHEALTHY",
+    else: "HEALTHY"))
+| fields host_name, host_state, open_problem_count
+| sort host_state desc, host_name asc
