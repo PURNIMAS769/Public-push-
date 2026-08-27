@@ -1,32 +1,48 @@
-timeseries {
-    used_memory = avg(dt.kubernetes.resourcequota.requests_memory_used),
-    max_memory = avg(dt.kubernetes.resourcequota.requests_memory)
-},
-by: {k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name},
-from: -5m, to: -1m
-| fieldsAdd used_memory = arrayLast(used_memory), max_memory = arrayLast(max_memory)
-| fieldsAdd memory_used_percent = round((used_memory / max_memory) * 100, decimals: 1)
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fields k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name, used_memory, max_memory, memory_used_percent
-
----------------------------
-timeseries {
-    used_cpu = avg(dt.kubernetes.resourcequota.requests_cpu_used),
-    max_cpu = avg(dt.kubernetes.resourcequota.requests_cpu)
-},
-by: {k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name},
-from: -5m, to: -1m
-| fieldsAdd used_cpu = arrayLast(used_cpu), max_cpu = arrayLast(max_cpu)
-| fieldsAdd cpu_used_percent = round((used_cpu / max_cpu) * 100, decimals: 1)
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fields k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name, used_cpu, max_cpu, cpu_used_percent
-----------------------------------
-timeseries {
-    cpu_used = avg(dt.kubernetes.container.cpu_usage),
-    mem_used = avg(dt.kubernetes.container.memory_working_set)
-},
-by: {k8s.namespace.name, k8s.container.name},
-from: -15m
-| fieldsAdd current_cpu = arrayLast(cpu_used), current_mem = arrayLast(mem_used)
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fields k8s.container.name, current_cpu, current_mem
+fetch dt.entity.process_group_instance
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| fieldsAdd host_id = belongs_to[dt.entity.host]
+| lookup [
+    fetch dt.entity.host
+    | fields id, entity.name
+  ], sourceField: host_id, lookupField: id, fields: { host_name = entity.name }
+| fields id, process_name = entity.name, host_name
+| fieldsAdd id_str = toString(id)
+| join [
+    fetch dt.davis.events, from:-7d
+    | expand affected_entity_ids
+    | filter contains(event.name, "restarted")
+    | fieldsAdd entity_id_str = toString(affected_entity_ids)
+    | summarize restarts_7d = count(), last_restart = takeMax(timestamp), by:{entity_id_str}
+  ], kind:leftOuter, on:{left[id_str] == right[entity_id_str]}, prefix:"w7."
+| join [
+    fetch dt.davis.events, from:-24h
+    | expand affected_entity_ids
+    | filter contains(event.name, "restarted")
+    | fieldsAdd entity_id_str = toString(affected_entity_ids)
+    | summarize restarts_24h = count(), by:{entity_id_str}
+  ], kind:leftOuter, on:{left[id_str] == right[entity_id_str]}, prefix:"w24."
+| fieldsAdd restarts_7d = if(isNull(w7.restarts_7d), 0, else: w7.restarts_7d)
+| fieldsAdd restarts_24h = if(isNull(w24.restarts_24h), 0, else: w24.restarts_24h)
+| fieldsAdd total_seconds = if(isNotNull(w7.last_restart), round((now() - w7.last_restart) / 1s), else: null)
+| fieldsAdd days_p = if(isNotNull(total_seconds), toLong(total_seconds / 86400), else: null)
+| fieldsAdd hours_p = if(isNotNull(total_seconds), toLong((total_seconds % 86400) / 3600), else: null)
+| fieldsAdd mins_p = if(isNotNull(total_seconds), toLong((total_seconds % 3600) / 60), else: null)
+| fieldsAdd `Time Since Last Restart` =
+    if(isNull(total_seconds), "No Restart in 7d",
+    else: if(days_p > 0, concat(toString(days_p), "d ", toString(hours_p), "h ", toString(mins_p), "m"),
+    else: if(hours_p > 0, concat(toString(hours_p), "h ", toString(mins_p), "m"),
+    else: concat(toString(mins_p), "m"))))
+| fieldsAdd `Status` =
+    if(restarts_24h >= 3, "🔴 Error (3+ restarts in 24h)",
+    else: if(restarts_24h >= 1 or restarts_7d >= 1, "🟡 Restarted Recently",
+    else: "🟢 Stable"))
+| sort restarts_24h desc, restarts_7d desc
+| fields
+    `Host` = host_name,
+    `Process` = process_name,
+    `Restarts (7d)` = restarts_7d,
+    `Restarts (24h)` = restarts_24h,
+    `Last Restart` = w7.last_restart,
+    `Time Since Last Restart`,
+    `Status`
+| limit 20
