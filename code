@@ -3,7 +3,7 @@ fetch dt.entity.host
 | fieldsAdd pg_ids = runs[dt.entity.process_group]
 | expand pg_ids
 | fieldsAdd process_name = entityName(pg_ids, type:"dt.entity.process_group")
-| filter contains(process_name, "SpringBoot")
+| filter contains(process_name, "paperlessinventory")
 | fields pg_ids, process_name, host_name = entity.name
 | join [
     timeseries
