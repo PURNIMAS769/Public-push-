@@ -3,7 +3,7 @@ fetch dt.entity.host
 | filter contains(toString(tags), "AYS:MSP_Unix")
 | fieldsAdd tag_list = tags
 | expand tag_list
-| filter contains(tag_list, ":")
-| fieldsAdd tag_key = splitString(tag_list, ":")[0]
-| summarize count(), by:{tag_key}
-| sort count() desc
+| filter startsWith(tag_list, "APPName:")
+| fieldsAdd app_name = splitString(tag_list, ":")[1]
+| summarize hostCount = count(), by:{app_name}
+| sort hostCount desc
