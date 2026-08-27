@@ -1,11 +1,56 @@
-timeseries cpu = avg(dt.process.cpu.usage),
-by:{dt.entity.process_group_instance},
-from:-24h
-timeseries memory = avg(dt.process.memory.usage),
-by:{dt.entity.process_group_instance, dt.entity.host},
-from:-15m
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
-| fieldsAdd current_memory = round(arrayLast(memory), decimals:2)
-| fields process_name, current_memory, dt.entity.host
-| sort current_memory desc
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| fieldsAdd host_id = id
+| fieldsAdd pg_ids = runs[dt.entity.process_group]
+| expand pg_ids
+| fieldsAdd process_name = entityName(pg_ids, type:"dt.entity.process_group")
+| fields pg_ids, process_name, host_name = entity.name, host_id
+| join [
+    timeseries
+        gc_count = avg(dt.runtime.jvm.gc.collection_count, scalar:true, default:0),
+        gc_time = avg(dt.runtime.jvm.gc.collection_time, scalar:true, default:0),
+    by: { dt.entity.process_group }
+  ],
+  kind: leftOuter,
+  on: left[pg_ids] == right[`dt.entity.process_group`],
+  fields: { gc_count, gc_time }
+| fieldsAdd `Avg GC Pause (ms)` = if(gc_count > 0, round(gc_time / gc_count, decimals:2), else: 0)
+| fields
+    `Host` = host_name,
+    `Process` = process_name,
+    `GC Count` = gc_count,
+    `GC Time (ms)` = gc_time,
+    `Avg GC Pause (ms)`
+| sort `Avg GC Pause (ms)` desc
+| limit 20
+
+
+
+
+
+
+---------------------------------------------------------------
+
+
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| fieldsAdd pg_ids = runs[dt.entity.process_group]
+| expand pg_ids
+| fieldsAdd process_name = entityName(pg_ids, type:"dt.entity.process_group")
+| fields pg_ids, process_name, host_name = entity.name
+| join [
+    timeseries
+        mem_max = avg(dt.runtime.jvm.memory.max, scalar:true, default:0),
+        mem_total = avg(dt.runtime.jvm.memory.total, scalar:true, default:0),
+        mem_free = avg(dt.runtime.jvm.memory.free, scalar:true, default:0),
+    by: { dt.entity.process_group }
+  ],
+  kind: leftOuter,
+  on: left[pg_ids] == right[`dt.entity.process_group`],
+  fields: { mem_max, mem_total, mem_free }
+| fieldsAdd `Heap Used (MB)` = round((mem_total - mem_free) / 1048576, decimals:1)
+| fieldsAdd `Heap Free (MB)` = round(mem_free / 1048576, decimals:1)
+| fieldsAdd `Heap Max (MB)` = round(mem_max / 1048576, decimals:1)
+| fields host_name, process_name, `Heap Used (MB)`, `Heap Free (MB)`, `Heap Max (MB)`
+| sort `Heap Used (MB)` desc
+| limit 20
