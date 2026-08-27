@@ -1,25 +1,7 @@
-fetch dt.davis.problems, from:-90d
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter in("APMID:APP00002734", entity_tags)
-| filter contains(root_cause_entity_name, "ims_pi")
-    or contains(root_cause_entity_name, "PI_DATA_LOAD")
-    or contains(root_cause_entity_name, "pi_data_cluster")
-    or contains(root_cause_entity_name, "Prompt_Pay")
-    or contains(root_cause_entity_name, "RPTPGPPDA")
-    or contains(root_cause_entity_name, "MSSQL")
-    or contains(root_cause_entity_name, "wpisq")
-| summarize
-    problem_title = takeFirst(event.name),
-    severity = takeFirst(event.category),
-    root_cause = takeFirst(root_cause_entity_name),
-    start_time = takeFirst(event.start),
-by:{display_id, event.id}
-| fieldsAdd problem_link = concat(
-    "https://fjh52344.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
-    event.id, "?from=now()-24h&to=now()")
-| fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
-| fieldsAdd hrs = floor(total_seconds / 3600)
-| fieldsAdd mins = floor((total_seconds % 3600) / 60)
-| fieldsAdd age_formatted = concat(toString(hrs), "h ", toString(mins), "m")
-| sort start_time desc
-| fields display_id, problem_title, severity, root_cause, age_formatted, problem_link
+fetch dt.entity.host
+| filter osType == "LINUX"
+| fieldsAdd tag_list = tags
+| expand tag_list
+| fieldsAdd tag_key = if(contains(tag_list, ":"), splitString(tag_list, ":")[0], else: tag_list)
+| summarize count(), by:{tag_key}
+| sort tag_key asc
