@@ -13,3 +13,14 @@ from:-24h
 | fieldsAdd process_name = entityName(dt.entity.process_group_instance)
 | filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
 | fields timeframe, interval, process_name, memory
+
+
+
+timeseries cpu = avg(dt.process.cpu.usage),
+by:{dt.entity.process_group_instance},
+from:-15m
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
+| fieldsAdd current_cpu = round(arrayLast(cpu), decimals:2)
+| fields process_name, current_cpu
+| sort current_cpu desc
