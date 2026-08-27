@@ -1,84 +1,19 @@
-timeseries diskfree_pct = avg(dt.host.disk.free), by: { dt.entity.host, dt.entity.disk }, from:-30d
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fieldsAdd host_tags = entityAttr(dt.entity.host, "tags")
-| filter arrayIndexOf(host_tags, "APMID:APP00002734") > -1
-| fieldsAdd disk_usage_pct = 100 - diskfree_pct[]
-| fields timeframe, interval, host_name, disk_name, disk_usage_pct, dt.entity.host, dt.entity.disk
-
-
-
-
------------------------------------------------
-timeseries {
-    used_memory = avg(dt.kubernetes.resourcequota.requests_memory_used),
-    max_memory = avg(dt.kubernetes.resourcequota.requests_memory)
-},
-by: {k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name},
-from: -30d
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd memory_used_percent = 100.0 * used_memory[] / max_memory[]
-| fields timeframe, interval, k8s.cluster.name, k8s.namespace.name, k8s.resourcequota.name, memory_used_percent
-
-
-
-
------------------------------------------------------
-
-
-timeseries requests = sum(dt.service.request.count),
-by:{dt.entity.service},
-from:-30d
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00002734\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_check = arraySum(requests)
-| filter isNotNull(total_check) and total_check > 0
-| fields timeframe, interval, service_name, requests
-
----------------------------------
-timeseries requests = sum(dt.service.request.count),
-by:{dt.entity.service},
-from:-30d
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00002734\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_check = arraySum(requests)
-| filter isNotNull(total_check) and total_check > 0
-| fields timeframe, interval, dt.entity.service, service_name, requests
-----------------------------------------------------------
-
-timeseries deadlocks = avg(`sql-server.locks.deadlocks.count`), by:{device.name}, from:-30d
-| filter contains(device.name, "wpisq")
-| fields timeframe, interval, device.name, deadlocks
-
-
-
--------------------------------------------------
-
-
-timeseries lock_waits = avg(`sql-server.locks.byWaitType`),
-by:{device.name, wait_type},
-from:-30d
-| filter contains(device.name, "wpisq")
-| filter startsWith(wait_type, "LCK_")
-| fields timeframe, interval, device.name, wait_type, lock_waits
-
-
-
-
-timeseries lock_waits = avg(`sql-server.locks.byWaitType`),
-from:-30d,
-filter: device.name == "twauswpisq04.adhcsctst.net" and wait_type == "LCK_M_U"
-| fields timeframe, interval, lock_waits
-
-
-
-
-
-timeseries requests = sum(dt.service.request.count),
-by:{dt.entity.service},
-from:-30d
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00002734\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_check = arraySum(requests)
-| filter isNotNull(total_check) and total_check > 0
-| fields timeframe, interval, dt.entity.service, service_name, requests
+fetch dt.davis.events, from:-30d
+| filter event.type == "CUSTOM_INFO"
+| expand affected_entity_ids
+| lookup [
+    fetch dt.entity.cloud_application
+    | filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+    | fields id, entity.name
+  ], sourceField: affected_entity_ids, lookupField: id, fields: { deployment_name = entity.name }
+| filter isNotNull(deployment_name)
+| fieldsAdd `Change Type` =
+    if(contains(event.name, "Created pod"), "Pod Created",
+    else: if(contains(event.name, "Deleted pod"), "Pod Deleted",
+    else: if(contains(event.name, "Scaled up"), "Scaled Up",
+    else: if(contains(event.name, "Scaled down"), "Scaled Down",
+    else: if(contains(event.name, "Deployment spec change"), "Deployment Spec Changed",
+    else: if(contains(event.name, "forbidden") or contains(event.name, "exceeded"), "Pod Creation Failed (Quota Exceeded)",
+    else: "Other Kubernetes Event"))))))
+| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type` }
+| sort `Change Type` asc, day desc
