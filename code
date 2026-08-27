@@ -1,7 +1,9 @@
 fetch dt.entity.host
-| filter osType == "LINUX"
+| filter in(osType, {"LINUX", "SOLARIS", "AIX"})
+| filter contains(toString(tags), "AYS:MSP_Unix")
 | fieldsAdd tag_list = tags
 | expand tag_list
-| fieldsAdd tag_key = if(contains(tag_list, ":"), splitString(tag_list, ":")[0], else: tag_list)
+| filter contains(tag_list, ":")
+| fieldsAdd tag_key = splitString(tag_list, ":")[0]
 | summarize count(), by:{tag_key}
-| sort tag_key asc
+| sort count() desc
