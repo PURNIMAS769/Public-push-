@@ -1,9 +1,28 @@
-fetch dt.entity.host
-| filter in(osType, {"LINUX", "SOLARIS", "AIX"})
-| filter contains(toString(tags), "AYS:MSP_Unix")
-| fieldsAdd tag_list = tags
-| expand tag_list
-| filter startsWith(tag_list, "APPName:")
-| fieldsAdd app_name = splitString(tag_list, ":")[1]
-| fields `Host Name` = entity.name, `OS Type` = osType, `Application Name` = app_name, `Host ID` = id
-| sort `Application Name` asc, `Host Name` asc
+timeseries used_pct = avg(dt.host.memory.usage, scalar:true),
+used = avg(dt.host.memory.used, scalar:true),
+recl = avg(dt.host.memory.recl, scalar:true),
+swap_used = avg(dt.host.memory.swap.used, scalar:true),
+page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
+by: { dt.entity.host },
+filter: { in(entityAttr(dt.entity.host, "osType"), array("LINUX")) and in(dt.entity.host, $Host) },
+from:-7d, interval:1h
+| fieldsAdd host.name = entityName(dt.entity.host)
+| fieldsAdd active_memory_gb = used / 1024 / 1024 / 1024
+| fieldsAdd total_memory_footprint_gb = (used + recl) / 1024 / 1024 / 1024
+| fieldsAdd reusable_cache_gb = recl / 1024 / 1024 / 1024
+| fieldsAdd swap_used_gb = swap_used / 1024 / 1024 / 1024
+| fieldsAdd health_status = if(used_pct > 80 and page_faults > 20, "OVERLOADED (Usage+PageFaults)",
+else:if(swap_used > 0 and page_faults > 20, "OVERLOADED (Swapping)",
+else:"HEALTHY"))
+| fieldsAdd used_pct_rounded = round(used_pct, decimals:1)
+| fieldsAdd page_faults_rounded = round(page_faults, decimals:2)
+| fields `Host Name` = host.name,
+`Active Memory In Use (GB)` = active_memory_gb,
+`Memory Usage %` = used_pct_rounded,
+`Total Memory Footprint incl. Cache (GB)` = total_memory_footprint_gb,
+`Reusable Cache Reclaimable (GB)` = reusable_cache_gb,
+`Disk Swap In Use (GB)` = swap_used_gb,
+`Memory Fetch Delays (Page Faults/sec)` = page_faults_rounded,
+`Overall Health` = health_status
+| sort `Memory Usage %` desc
+| limit 25
