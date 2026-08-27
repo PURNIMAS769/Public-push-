@@ -35,7 +35,15 @@ from:-30d
 | filter isNotNull(total_check) and total_check > 0
 | fields timeframe, interval, service_name, requests
 
-
+---------------------------------
+timeseries requests = sum(dt.service.request.count),
+by:{dt.entity.service},
+from:-30d
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00002734\")"))
+| fieldsAdd service_name = entityName(dt.entity.service)
+| fieldsAdd total_check = arraySum(requests)
+| filter isNotNull(total_check) and total_check > 0
+| fields timeframe, interval, dt.entity.service, service_name, requests
 ----------------------------------------------------------
 
 timeseries deadlocks = avg(`sql-server.locks.deadlocks.count`), by:{device.name}, from:-30d
