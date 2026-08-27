@@ -49,3 +49,23 @@ from:-30d
 timeseries deadlocks = avg(`sql-server.locks.deadlocks.count`), by:{device.name}, from:-30d
 | filter contains(device.name, "wpisq")
 | fields timeframe, interval, device.name, deadlocks
+
+
+
+-------------------------------------------------
+
+
+timeseries lock_waits = avg(`sql-server.locks.byWaitType`),
+by:{device.name, wait_type},
+from:-30d
+| filter contains(device.name, "wpisq")
+| filter startsWith(wait_type, "LCK_")
+| fields timeframe, interval, device.name, wait_type, lock_waits
+
+
+
+
+timeseries lock_waits = avg(`sql-server.locks.byWaitType`),
+from:-30d,
+filter: device.name == "twauswpisq04.adhcsctst.net" and wait_type == "LCK_M_U"
+| fields timeframe, interval, lock_waits
