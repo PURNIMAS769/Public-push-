@@ -1,15 +1,9 @@
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| filter contains(entity.name, "SpringBoot")
-| fields id
-| fieldsAdd id_str = toString(id)
-| limit 3
-
-
-
 fetch dt.davis.events, from:-7d
 | expand affected_entity_ids
 | filter contains(event.name, "restarted")
-| fieldsAdd entity_id_str = toString(affected_entity_ids)
-| fields entity_id_str, event.name, timestamp
-| limit 10
+| filter in(affected_entity_ids, {
+    "PROCESS_GROUP_INSTANCE-44EBF6BD68453B6D",
+    "PROCESS_GROUP_INSTANCE-5DCAB95FA3B707B1",
+    "PROCESS_GROUP_INSTANCE-9A4BE6A38ED7F448"
+})
+| fields entity_id_str = affected_entity_ids, event.name, timestamp
