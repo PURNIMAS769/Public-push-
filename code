@@ -1,42 +1,9 @@
 fetch dt.entity.host
 | filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| fieldsAdd host_id = id
 | fieldsAdd pg_ids = runs[dt.entity.process_group]
 | expand pg_ids
 | fieldsAdd process_name = entityName(pg_ids, type:"dt.entity.process_group")
-| fields pg_ids, process_name, host_name = entity.name, host_id
-| join [
-    timeseries
-        gc_count = avg(dt.runtime.jvm.gc.collection_count, scalar:true, default:0),
-        gc_time = avg(dt.runtime.jvm.gc.collection_time, scalar:true, default:0),
-    by: { dt.entity.process_group }
-  ],
-  kind: leftOuter,
-  on: left[pg_ids] == right[`dt.entity.process_group`],
-  fields: { gc_count, gc_time }
-| fieldsAdd `Avg GC Pause (ms)` = if(gc_count > 0, round(gc_time / gc_count, decimals:2), else: 0)
-| fields
-    `Host` = host_name,
-    `Process` = process_name,
-    `GC Count` = gc_count,
-    `GC Time (ms)` = gc_time,
-    `Avg GC Pause (ms)`
-| sort `Avg GC Pause (ms)` desc
-| limit 20
-
-
-
-
-
-
----------------------------------------------------------------
-
-
-fetch dt.entity.host
-| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| fieldsAdd pg_ids = runs[dt.entity.process_group]
-| expand pg_ids
-| fieldsAdd process_name = entityName(pg_ids, type:"dt.entity.process_group")
+| filter contains(process_name, "SpringBoot")
 | fields pg_ids, process_name, host_name = entity.name
 | join [
     timeseries
@@ -53,4 +20,3 @@ fetch dt.entity.host
 | fieldsAdd `Heap Max (MB)` = round(mem_max / 1048576, decimals:1)
 | fields host_name, process_name, `Heap Used (MB)`, `Heap Free (MB)`, `Heap Max (MB)`
 | sort `Heap Used (MB)` desc
-| limit 20
