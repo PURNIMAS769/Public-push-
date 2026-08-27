@@ -1,9 +1,15 @@
-fetch dt.davis.events, from:-7d
-| expand affected_entity_ids
-| filter contains(event.name, "restarted")
-| filter in(affected_entity_ids, {
-    "PROCESS_GROUP_INSTANCE-44EBF6BD68453B6D",
-    "PROCESS_GROUP_INSTANCE-5DCAB95FA3B707B1",
-    "PROCESS_GROUP_INSTANCE-9A4BE6A38ED7F448"
-})
-| fields entity_id_str = affected_entity_ids, event.name, timestamp
+timeseries cpu = avg(dt.process.cpu.usage),
+by:{dt.entity.process_group_instance},
+from:-24h
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
+| fields timeframe, interval, process_name, cpu
+
+
+
+timeseries memory = avg(dt.process.memory.usage),
+by:{dt.entity.process_group_instance},
+from:-24h
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
+| fields timeframe, interval, process_name, memory
