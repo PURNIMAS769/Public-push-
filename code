@@ -26,3 +26,19 @@ else:"HEALTHY"))
 `Overall Health` = health_status
 | sort `Memory Usage %` desc
 | limit 25
+
+
+----------------------------------------------------------
+
+fetch metric.series
+| filter contains(metric.key, "pressure") or contains(metric.key, "psi") or contains(metric.key, "stall")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
+
+
+
+
+fetch metric.series
+| filter contains(metric.key, "host.memory") or contains(metric.key, "host.cpu")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
