@@ -1,24 +1,10 @@
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| filter contains(entity.name, "MSSQL")
-| fields entity.name, id
-
-
-
-timeseries cpu = avg(dt.process.cpu.usage),
-by:{dt.entity.process_group_instance},
-from:-24h
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-| filter contains(process_name, "MSSQL")
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
-| fields timeframe, interval, process_name, cpu
-
-
-
-timeseries memory = avg(dt.process.memory.usage),
-by:{dt.entity.process_group_instance},
-from:-24h
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-| filter contains(process_name, "MSSQL")
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
-| fields timeframe, interval, process_name, memory
+fetch events, from:-90d
+| filter event.provider == "KUBERNETES_EVENT"
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| filter contains(event.name, "Stopping container")
+    or contains(event.name, "Started container")
+    or contains(event.name, "Created pod")
+    or contains(event.name, "Node is not ready")
+| sort timestamp desc
+| fields timestamp, k8s.pod.name, event.name
+| limit 20
