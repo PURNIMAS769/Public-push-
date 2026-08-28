@@ -1,10 +1,8 @@
-fetch events, from:-90d
-| filter event.provider == "KUBERNETES_EVENT"
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| filter contains(event.name, "Stopping container")
-    or contains(event.name, "Started container")
-    or contains(event.name, "Created pod")
-    or contains(event.name, "Node is not ready")
-| sort timestamp desc
-| fields timestamp, k8s.pod.name, event.name
-| limit 20
+timeseries diskfree_pct = avg(dt.host.disk.free),
+by: { dt.entity.host, dt.entity.disk },
+from:-5M,
+filter: in(dt.entity.host, classicEntitySelector("type(host),tag(\"APMID:APP00002734\")"))
+| fieldsAdd host_name = entityName(dt.entity.host)
+| fieldsAdd disk_name = entityName(dt.entity.disk)
+| fieldsAdd disk_usage_pct = 100 - diskfree_pct[]
+| fields timeframe, interval, host_name, disk_name, disk_usage_pct, dt.entity.host, dt.entity.disk
