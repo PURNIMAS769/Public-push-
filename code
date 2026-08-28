@@ -1,19 +1,24 @@
-fetch dt.davis.events, from:-30d
-| filter event.type == "CUSTOM_INFO"
-| expand affected_entity_ids
-| lookup [
-    fetch dt.entity.cloud_application
-    | filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-    | fields id, entity.name
-  ], sourceField: affected_entity_ids, lookupField: id, fields: { deployment_name = entity.name }
-| filter isNotNull(deployment_name)
-| fieldsAdd `Change Type` =
-    if(contains(event.name, "Created pod"), "Pod Created",
-    else: if(contains(event.name, "Deleted pod"), "Pod Deleted",
-    else: if(contains(event.name, "Scaled up"), "Scaled Up",
-    else: if(contains(event.name, "Scaled down"), "Scaled Down",
-    else: if(contains(event.name, "Deployment spec change"), "Deployment Spec Changed",
-    else: if(contains(event.name, "forbidden") or contains(event.name, "exceeded"), "Pod Creation Failed (Quota Exceeded)",
-    else: "Other Kubernetes Event"))))))
-| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type` }
-| sort `Change Type` asc, day desc
+fetch dt.entity.process_group_instance
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| filter contains(entity.name, "MSSQL")
+| fields entity.name, id
+
+
+
+timeseries cpu = avg(dt.process.cpu.usage),
+by:{dt.entity.process_group_instance},
+from:-24h
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+| filter contains(process_name, "MSSQL")
+| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
+| fields timeframe, interval, process_name, cpu
+
+
+
+timeseries memory = avg(dt.process.memory.usage),
+by:{dt.entity.process_group_instance},
+from:-24h
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+| filter contains(process_name, "MSSQL")
+| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00002734\")"))
+| fields timeframe, interval, process_name, memory
