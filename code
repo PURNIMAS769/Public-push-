@@ -1,8 +1,6 @@
-timeseries diskfree_pct = avg(dt.host.disk.free),
-by: { dt.entity.host, dt.entity.disk },
-from:-5M,
-filter: in(dt.entity.host, classicEntitySelector("type(host),tag(\"APMID:APP00002734\")"))
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fieldsAdd disk_usage_pct = 100 - diskfree_pct[]
-| fields timeframe, interval, host_name, disk_name, disk_usage_pct, dt.entity.host, dt.entity.disk
+describe `dt.entity.sql:db2_host`
+
+
+fetch `dt.entity.sql:db2_host`
+| fields id, entity.name, tags
+| sort entity.name asc
