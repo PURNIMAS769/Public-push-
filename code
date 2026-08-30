@@ -1,6 +1,10 @@
-describe `dt.entity.sql:db2_host`
+timeseries avg(db2.cpu_usage_total), by:{dt.entity.sql:db2_host}
+| summarize count()
+
 
 
 fetch `dt.entity.sql:db2_host`
+| fieldsAdd id
+| lookup [ timeseries avg(db2.cpu_usage_total), by:{dt.entity.sql:db2_host} ], sourceField:id, lookupField:dt.entity.sql:db2_host, prefix:"metric_"
+| filter isNull(metric_avg)
 | fields id, entity.name, tags
-| sort entity.name asc
