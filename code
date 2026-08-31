@@ -1,4 +1,10 @@
-fetch metric.series
-| filter startsWith(metric.key, "dt.kubernetes.persistentvolumeclaim")
-| summarize by:{metric.key}
-| sort metric.key asc
+timeseries
+    used = avg(dt.kubernetes.persistentvolumeclaim.used),
+    capacity = avg(dt.kubernetes.persistentvolumeclaim.capacity),
+    by:{k8s.namespace.name, k8s.persistentvolumeclaim.name},
+    from:-15m
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| fieldsAdd current_used = arrayLast(used), current_capacity = arrayLast(capacity)
+| fieldsAdd usage_pct = round((current_used / current_capacity) * 100, decimals:1)
+| fields k8s.persistentvolumeclaim.name, current_used, current_capacity, usage_pct
+| sort usage_pct desc
