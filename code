@@ -1,10 +1,20 @@
-timeseries
-    used = avg(dt.kubernetes.persistentvolumeclaim.used),
-    capacity = avg(dt.kubernetes.persistentvolumeclaim.capacity),
-    by:{k8s.namespace.name, k8s.persistentvolumeclaim.name},
-    from:-15m
+timeseries used = avg(dt.kubernetes.persistentvolumeclaim.used),
+by:{k8s.namespace.name},
+from:-15m
+| fieldsAdd current = arrayLast(used)
+| filter isNotNull(current)
+| fields k8s.namespace.name, current
+| limit 20
+
+
+timeseries used = avg(dt.kubernetes.persistentvolumeclaim.used),
+by:{k8s.namespace.name},
+from:-24h
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd current_used = arrayLast(used), current_capacity = arrayLast(capacity)
-| fieldsAdd usage_pct = round((current_used / current_capacity) * 100, decimals:1)
-| fields k8s.persistentvolumeclaim.name, current_used, current_capacity, usage_pct
-| sort usage_pct desc
+| fields timeframe, interval, k8s.namespace.name, used
+
+
+fetch metric.series
+| filter metric.key == "dt.kubernetes.persistentvolumeclaim.used"
+| filter contains(toString(dimensions), "paperless")
+| limit 5
