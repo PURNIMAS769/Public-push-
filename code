@@ -1,11 +1,10 @@
-fetch dt.davis.events, from:-90d
-| filter contains(event.name, "stuck in pending")
-    or contains(event.name, "stuck in terminating")
-    or contains(event.name, "without ready pods")
-    or contains(event.name, "non-ready pods")
-    or contains(event.name, "backoff")
-    or contains(event.name, "eviction")
-    or contains(event.name, "preemption")
-| summarize count(), by:{event.name}
+fetch dt.davis.events, from:-60d
+| filter in("APMID:APP00002734", entity_tags)
+| filter contains(event.name, "pod") or contains(event.name, "Pod")
+    or contains(event.name, "workload") or contains(event.name, "Workload")
+    or contains(event.name, "backoff") or contains(event.name, "eviction")
+    or contains(event.name, "preemption") or contains(event.name, "exceeded")
+    or contains(event.name, "forbidden")
+| summarize count(), by:{event.name, event.category}
 | sort count() desc
-| limit 20
+| limit 30
