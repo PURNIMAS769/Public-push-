@@ -1,3 +1,6 @@
-| fieldsAdd rt_ms = round(arrayAvg(rt) / 1000, decimals: 2) 
-| fieldsAdd `Response Time` = if(rt_ms >= 1000, concat(toString(round(rt_ms / 1000, decimals: 2)), " s"), 
-else: concat(toString(rt_ms), " ms"))
+fetch dt.davis.problems, from:-90d
+| filter not(dt.davis.is_duplicate)
+| filter in("APMID:APP00002734", entity_tags)
+| filter contains(event.name, "pod") or contains(event.name, "Pod") or contains(event.name, "workload") or contains(event.name, "Workload")
+| summarize count(), by:{event.name, event.category}
+| sort count() desc
