@@ -1,12 +1,6 @@
-fetch dt.entity.host | filter cloudType <> "" OR hypervisorType == "VMWARE" 
-| fieldsAdd cloudType | summarize by: {cloudType}, count()
-
-
-fetch dt.entity.host
-| fieldsAdd hypervisorType, cloudType
-| summarize count(), by:{hypervisorType}
-
-
-fetch dt.entity.host
-| fieldsAdd clustered_by
-| limit 5
+timeseries avail = avg(dt.host.availability), by:{dt.entity.host}
+| lookup [fetch dt.entity.host | filter hypervisorType == "AHV" | fields id, entity.name],
+    sourceField:dt.entity.host, lookupField:id
+| filter isNotNull(lookup.entity.name)
+| fieldsAdd hostName = lookup.entity.name
+| fields hostName, avail
