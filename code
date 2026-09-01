@@ -1,4 +1,8 @@
-timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
+timeseries used_pct = avg(dt.host.memory.usage, scalar:true),
+used = avg(dt.host.memory.used, scalar:true),
+swap_used = avg(dt.host.memory.swap.used, scalar:true),
+swap_total = avg(dt.host.memory.swap.total, scalar:true),
+disk_queue = avg(dt.host.disk.queue_length, scalar:true),
 by: { dt.entity.host },
 from:-7d, interval:1h
 | fieldsAdd host.name = entityName(dt.entity.host)
@@ -11,17 +15,22 @@ from:-7d, interval:1h
         "Virtual",
         else: if(in(id, classicEntitySelector("type(HOST),cloudType(AZURE)")),
         "Azure", else: "Others")))
-    | filter category == "Physical"
+    | filter category == "Virtual"
     | filter contains(toString(tags), "AYS:MSP_Windows")
+    | filter not(contains(toString(tags), "CMDB-ENV:Production"))
     | fields id
 ], kind: inner, on: { id }
-| fieldsAdd raw_pct = round((page_faults / 250) * 100, decimals: 2)
-| fieldsAdd page_fault_pct = if(raw_pct > 100, 100, else: raw_pct)
-| fieldsAdd fault_status = if(page_faults > 245.38, "CRITICAL",
-    else: if(page_faults > 72.95, "HIGH",
-    else: if(page_faults > 0.09, "ELEVATED", else: "NORMAL")))
+| fieldsAdd used_gb = round(used / 1024 / 1024 / 1024, decimals: 2)
+| fieldsAdd swap_used_gb = round(swap_used / 1024 / 1024 / 1024, decimals: 2)
+| fieldsAdd swap_pct = round(if(swap_total > 0, (swap_used / swap_total) * 100, else: 0), decimals: 2)
+| fieldsAdd health_status = if(used_pct > 80 or swap_pct > 10 or disk_queue > 2,
+    "OVERLOADED (Mem/Swap/DiskQueue)",
+    else: "HEALTHY")
 | fields
 `Host Name` = host.name,
-`Page Faults/sec` = round(page_faults, decimals: 2),
-`Page Fault Load %` = page_fault_pct,
-`Fault Status` = fault_status, dt.entity.host
+`Memory Used (GB)` = used_gb,
+`Memory Usage %` = round(used_pct, decimals: 1),
+`Swap Used (GB)` = swap_used_gb,
+`Swap Used %` = swap_pct,
+`Disk Queue Length` = round(disk_queue, decimals: 2),
+`Overall Health` = health_status, dt.entity.host
