@@ -2,26 +2,10 @@ timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
 by: { dt.entity.host },
 from:-7d, interval:1h
 | fieldsAdd host.name = entityName(dt.entity.host)
-| fieldsAdd id = dt.entity.host
-| join [
-    fetch dt.entity.host
-    | fieldsAdd category = if(in(id, classicEntitySelector("type(HOST),hostVirtualizationType(PHYSICAL_HOST)")),
-        "Physical",
-        else: if(in(id, classicEntitySelector("type(HOST),hypervisorType(VMWARE)")),
-        "Virtual",
-        else: if(in(id, classicEntitySelector("type(HOST),cloudType(AZURE)")),
-        "Azure", else: "Others")))
-    | filter category == "Virtual"
-    | filter contains(toString(tags), "AYS:MSP_Windows")
-    | filter not(contains(toString(tags), "CMDB-ENV:Production"))
-    | fields id
-], kind: inner, on: { id }
-| fieldsAdd raw_pct = round((page_faults / 20) * 100, decimals: 2)
-| fieldsAdd page_fault_pct = if(raw_pct > 100, 100, else: raw_pct)
-| fieldsAdd fault_status = if(page_faults > 20, "HIGH",
-    else: if(page_faults > 10, "ELEVATED", else: "NORMAL"))
-| fields
-`Host Name` = host.name,
-`Page Faults/sec` = round(page_faults, decimals: 2),
-`Page Fault Load %` = page_fault_pct,
-`Fault Status` = fault_status, dt.entity.host
+| summarize
+    min_pf = min(page_faults),
+    avg_pf = avg(page_faults),
+    p50_pf = percentile(page_faults, 50),
+    p90_pf = percentile(page_faults, 90),
+    p99_pf = percentile(page_faults, 99),
+    max_pf = max(page_faults)
