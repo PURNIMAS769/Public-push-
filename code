@@ -1,73 +1,8 @@
-data record(goal = 99.9)
-| fields Reliability_Goal = goal
+fetch dt.entity.custom_device
+| filter contains(toString(technology), "NUTANIX") or contains(lower(entity.name), "nutanix")
+| fields id, entity.name, technology
 
-
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
-| fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| join [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
-    | expand affected_entity_ids
-    | fieldsAdd downtime_ms = if(isNotNull(event.end), (event.end - event.start) / 1ms, else: (now() - event.start) / 1ms)
-    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
-], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
-| summarize total_downtime_ms = sum(p.downtime_ms)
-| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
-| fieldsAdd total_period_ms = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1ms
-| fieldsAdd availability_pct = round((1 - (total_downtime_ms / total_period_ms)) * 100, decimals:2)
-| fieldsAdd Status = if(availability_pct >= 99.9, "✅ YES - On Target", else: "❌ NO - Below Target")
-| fields Status
-
-
-
-data record(target = 99.9)
-| fieldsAdd allowed_bad = 100 - target
-| fieldsAdd total_hrs = (allowed_bad / 100) * 720
-| fields Allowed_Downtime_Hours = round(total_hrs, decimals:2)
-
-
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
-| fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| join [
-    fetch dt.davis.problems, from:-30d
-    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
-    | expand affected_entity_ids
-    | fieldsAdd downtime_ms = if(isNotNull(event.end), (event.end - event.start) / 1ms, else: (now() - event.start) / 1ms)
-    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
-], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
-| summarize total_downtime_ms = sum(p.downtime_ms)
-| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
-| fieldsAdd used_hrs = total_downtime_ms / 3600000
-| fields Downtime_Used = round(used_hrs, decimals:2)
-
-
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
-| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
-| fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| join [
-    fetch dt.davis.problems, from:-30d
-    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
-    | expand affected_entity_ids
-    | fieldsAdd downtime_ms = if(isNotNull(event.end), (event.end - event.start) / 1ms, else: (now() - event.start) / 1ms)
-    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
-], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
-| summarize total_downtime_ms = sum(p.downtime_ms)
-| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
-| fieldsAdd used_hrs = total_downtime_ms / 3600000
-| fieldsAdd allowed_hrs = 0.72
-| fieldsAdd remain_hrs = allowed_hrs - used_hrs
-| fields Remaining_Budget = round(remain_hrs, decimals:2)
+fetch dt.entity.host
+| fieldsAdd hostGroup, tags, virtualizationInfo
+| filter contains(toString(tags), "Nutanix") or contains(toString(hostGroup), "NUTANIX") or contains(toString(virtualizationInfo), "NUTANIX")
+| fields id, entity.name, hostGroup, tags
