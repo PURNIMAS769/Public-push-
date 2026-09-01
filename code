@@ -1,52 +1,13 @@
-timeseries oom_kills = sum(dt.kubernetes.container.oom_kills, default:0),
-by:{k8s.namespace.name, k8s.container.name},
-from:-30d
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd total_oom_kills = arraySum(oom_kills)
-| sort total_oom_kills desc
-| summarize
-    max_kills = takeFirst(total_oom_kills),
-    worst_container = takeFirst(k8s.container.name)
-| fieldsAdd `Status` = if(max_kills > 0, concat("🔴 ", worst_container, " — ", toString(max_kills), " OOM kills"), else: "🟢 Healthy — No OOM Kills")
-| fields `Status`
-
-
-
-timeseries cpu_throttled = avg(dt.kubernetes.container.cpu_throttled, default:0),
-by:{k8s.namespace.name, k8s.container.name},
-from:-24h
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fields timeframe, interval, k8s.container.name, cpu_throttled
-
-
-timeseries restarts = sum(dt.kubernetes.container.restarts, default:0),
-by:{k8s.namespace.name, k8s.container.name},
-from:-30d
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd total = arraySum(restarts)
-| fields k8s.container.name, total
-| sort total desc
-
-
 timeseries
     limits_cpu = avg(dt.kubernetes.container.limits_cpu, default:0),
     requests_cpu = avg(dt.kubernetes.container.requests_cpu, default:0),
     limits_memory = avg(dt.kubernetes.container.limits_memory, default:0),
     requests_memory = avg(dt.kubernetes.container.requests_memory, default:0),
-    by:{k8s.namespace.name, k8s.container.name},
-    from:-15m
+    by:{k8s.cluster.name, k8s.namespace.name, k8s.container.name},
+    from:-1h
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
 | fieldsAdd `Limits CPU` = arrayLast(limits_cpu), `Requests CPU` = arrayLast(requests_cpu)
 | fieldsAdd `Limits Memory (MB)` = round(arrayLast(limits_memory)/1048576, decimals:1)
 | fieldsAdd `Requests Memory (MB)` = round(arrayLast(requests_memory)/1048576, decimals:1)
-| fields k8s.container.name, `Limits CPU`, `Requests CPU`, `Limits Memory (MB)`, `Requests Memory (MB)`
-
-
-
-timeseries
-    pods_desired = avg(dt.kubernetes.workload.pods_desired, default:0),
-    by:{k8s.namespace.name, k8s.workload.name},
-    from:-15m
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd current_desired = arrayLast(pods_desired)
-| fields k8s.workload.name, current_desired
+| fields k8s.cluster.name, k8s.container.name, `Limits CPU`, `Requests CPU`, `Limits Memory (MB)`, `Requests Memory (MB)`
+| sort k8s.cluster.name asc
