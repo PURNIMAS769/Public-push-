@@ -1,10 +1,12 @@
-fetch dt.entity.custom_device
-| fieldsAdd entity.type
-| summarize count(), by:{entity.type}
-| sort count() desc
+fetch dt.entity.host | filter cloudType <> "" OR hypervisorType == "VMWARE" 
+| fieldsAdd cloudType | summarize by: {cloudType}, count()
 
 
 fetch dt.entity.host
-| fieldsAdd hostGroupName, tags
-| filter contains(lower(hostGroupName), "nutanix") or contains(lower(toString(tags)), "nutanix")
-| fields id, entity.name, hostGroupName, tags
+| fieldsAdd hypervisorType, cloudType
+| summarize count(), by:{hypervisorType}
+
+
+fetch dt.entity.host
+| fieldsAdd clustered_by
+| limit 5
