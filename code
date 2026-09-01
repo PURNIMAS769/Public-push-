@@ -1,20 +1,4 @@
-timeseries used = avg(dt.kubernetes.persistentvolumeclaim.used),
-by:{k8s.namespace.name},
-from:-15m
-| fieldsAdd current = arrayLast(used)
-| filter isNotNull(current)
-| fields k8s.namespace.name, current
-| limit 20
-
-
-timeseries used = avg(dt.kubernetes.persistentvolumeclaim.used),
-by:{k8s.namespace.name},
-from:-24h
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fields timeframe, interval, k8s.namespace.name, used
-
-
 fetch metric.series
-| filter metric.key == "dt.kubernetes.persistentvolumeclaim.used"
-| filter contains(toString(dimensions), "paperless")
-| limit 5
+| filter contains(metric.key, "network") and startsWith(metric.key, "dt.kubernetes")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
