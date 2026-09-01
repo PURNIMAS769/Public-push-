@@ -1,36 +1,18 @@
-timeseries used_pct = avg(dt.host.memory.usage, scalar:true),
-used = avg(dt.host.memory.used, scalar:true),
-swap_used = avg(dt.host.memory.swap.used, scalar:true),
-swap_total = avg(dt.host.memory.swap.total, scalar:true),
-disk_queue = avg(dt.host.disk.queue_length, scalar:true),
-by: { dt.entity.host },
-from:-7d, interval:1h
-| fieldsAdd host.name = entityName(dt.entity.host)
-| fieldsAdd id = dt.entity.host
-| join [
+fetch dt.davis.problems
+| filter isNull(dt.davis.is_duplicate) or not(dt.davis.is_duplicate)
+| expand affected_entity_ids
+| filter matchesValue(affected_entity_types, "dt.entity.host")
+| lookup [
     fetch dt.entity.host
-    | fieldsAdd category = if(in(id, classicEntitySelector("type(HOST),hostVirtualizationType(PHYSICAL_HOST)")),
-        "Physical",
-        else: if(in(id, classicEntitySelector("type(HOST),hypervisorType(VMWARE)")),
-        "Virtual",
-        else: if(in(id, classicEntitySelector("type(HOST),cloudType(AZURE)")),
-        "Azure", else: "Others")))
-    | filter category == "Virtual"
+    | filter in(id, classicEntitySelector("type(HOST),osType(WINDOWS)"))
     | filter contains(toString(tags), "AYS:MSP_Windows")
     | filter not(contains(toString(tags), "CMDB-ENV:Production"))
     | fields id
-], kind: inner, on: { id }
-| fieldsAdd used_gb = round(used / 1024 / 1024 / 1024, decimals: 2)
-| fieldsAdd swap_used_gb = round(swap_used / 1024 / 1024 / 1024, decimals: 2)
-| fieldsAdd swap_pct = round(if(swap_total > 0, (swap_used / swap_total) * 100, else: 0), decimals: 2)
-| fieldsAdd health_status = if(used_pct > 80 or swap_pct > 10 or disk_queue > 2,
-    "OVERLOADED (Mem/Swap/DiskQueue)",
-    else: "HEALTHY")
-| fields
-`Host Name` = host.name,
-`Memory Used (GB)` = used_gb,
-`Memory Usage %` = round(used_pct, decimals: 1),
-`Swap Used (GB)` = swap_used_gb,
-`Swap Used %` = swap_pct,
-`Disk Queue Length` = round(disk_queue, decimals: 2),
-`Overall Health` = health_status, dt.entity.host
+  ], sourceField: affected_entity_ids, lookupField: id, prefix: "host."
+| filter isNotNull(host.id)
+| summarize alert_category = takeFirst(event.category),
+    start_time = takeFirst(event.start),
+    end_time = takeFirst(event.end),
+    by: { display_id, event.id }
+| makeTimeseries count(), by: { alert_category }, interval: 1h,
+    spread: timeframe(from:start_time, to:coalesce(end_time, now()))
