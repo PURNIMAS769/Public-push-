@@ -6,8 +6,9 @@ timeseries
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
 | fieldsAdd total_dropped_rx = arraySum(dropped_rx), total_dropped_tx = arraySum(dropped_tx)
 | fieldsAdd total_drops = total_dropped_rx + total_dropped_tx
+| sort total_drops desc
 | summarize
-    max_drops = max(total_drops),
-    worst_pod = takeFirst(if(total_drops == max(total_drops), k8s.pod.name, else: null))
+    max_drops = takeFirst(total_drops),
+    worst_pod = takeFirst(k8s.pod.name)
 | fieldsAdd `Status` = if(max_drops > 0, concat("🔴 ", worst_pod, " — ", toString(max_drops), " drops"), else: "🟢 Healthy — No Packet Drops")
 | fields `Status`
