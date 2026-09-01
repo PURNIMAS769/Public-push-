@@ -1,18 +1,9 @@
 timeseries
-    dropped_rx = sum(dt.kubernetes.pod.network_received_packets_dropped),
-    by:{k8s.namespace.name},
-    from:-24h
-| fieldsAdd total = arraySum(dropped_rx)
-| filter total > 0
-| fields k8s.namespace.name, total
-| limit 20
-
-
-timeseries
     dropped_rx = sum(dt.kubernetes.pod.network_received_packets_dropped, default:0),
     dropped_tx = sum(dt.kubernetes.pod.network_transmitted_packets_dropped, default:0),
     by:{k8s.namespace.name},
     from:-30d
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
 | fieldsAdd total_dropped_rx = arraySum(dropped_rx), total_dropped_tx = arraySum(dropped_tx)
-| fields k8s.namespace.name, total_dropped_rx, total_dropped_tx
+| fieldsAdd `Status` = if(total_dropped_rx > 0 or total_dropped_tx > 0, "🔴 Packet Drops Detected", else: "🟢 No Drops (Healthy)")
+| fields k8s.namespace.name, total_dropped_rx, total_dropped_tx, `Status`
