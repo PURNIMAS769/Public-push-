@@ -1,17 +1,27 @@
-timeseries
-    limits_cpu = avg(dt.kubernetes.container.limits_cpu, default:0),
-    by:{k8s.cluster.name, k8s.namespace.name, k8s.container.name},
-    from:-1h
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd current = arrayLast(limits_cpu)
-| fields k8s.cluster.name, k8s.container.name, current
-
-timeseries limits_cpu = avg(dt.kubernetes.container.limits_cpu),
-by:{k8s.cluster.name, k8s.namespace.name, k8s.container.name},
-from:-24h
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fields timeframe, interval, k8s.cluster.name, k8s.container.name, limits_cpu
-
-timeseries pod_count = sum(dt.kubernetes.pods), by:{k8s.cluster.name, k8s.namespace.name}, from:-1h
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fields k8s.cluster.name, k8s.namespace.name
+timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
+by: { dt.entity.host },
+from:-7d, interval:1h
+| fieldsAdd host.name = entityName(dt.entity.host)
+| fieldsAdd id = dt.entity.host
+| join [
+    fetch dt.entity.host
+    | fieldsAdd category = if(in(id, classicEntitySelector("type(HOST),hostVirtualizationType(PHYSICAL_HOST)")),
+        "Physical",
+        else: if(in(id, classicEntitySelector("type(HOST),hypervisorType(VMWARE)")),
+        "Virtual",
+        else: if(in(id, classicEntitySelector("type(HOST),cloudType(AZURE)")),
+        "Azure", else: "Others")))
+    | filter category == "Virtual"
+    | filter contains(toString(tags), "AYS:MSP_Windows")
+    | filter not(contains(toString(tags), "CMDB-ENV:Production"))
+    | fields id
+], kind: inner, on: { id }
+| fieldsAdd raw_pct = round((page_faults / 20) * 100, decimals: 2)
+| fieldsAdd page_fault_pct = if(raw_pct > 100, 100, else: raw_pct)
+| fieldsAdd fault_status = if(page_faults > 20, "HIGH",
+    else: if(page_faults > 10, "ELEVATED", else: "NORMAL"))
+| fields
+`Host Name` = host.name,
+`Page Faults/sec` = round(page_faults, decimals: 2),
+`Page Fault Load %` = page_fault_pct,
+`Fault Status` = fault_status, dt.entity.host
