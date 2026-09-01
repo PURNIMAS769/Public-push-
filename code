@@ -6,12 +6,11 @@ timeseries
 | fieldsAdd current = arrayLast(limits_cpu)
 | fields k8s.cluster.name, k8s.container.name, current
 
-timeseries limits_cpu = avg(dt.kubernetes.container.limits_cpu, default:0),
-by:{k8s.cluster.name},
-from:-1h
-| fieldsAdd current = arrayLast(limits_cpu)
-| fields k8s.cluster.name, current
-| limit 20
+timeseries limits_cpu = avg(dt.kubernetes.container.limits_cpu),
+by:{k8s.cluster.name, k8s.namespace.name, k8s.container.name},
+from:-24h
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| fields timeframe, interval, k8s.cluster.name, k8s.container.name, limits_cpu
 
 timeseries pod_count = sum(dt.kubernetes.pods), by:{k8s.cluster.name, k8s.namespace.name}, from:-1h
 | filter k8s.namespace.name == "app00002734-paperless-inventory"
