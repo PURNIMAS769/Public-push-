@@ -1,11 +1,7 @@
-fetch `dt.entity.sql:db2_instance`, from:-24h
-| fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else: false)
-| lookup [
-    timeseries avail = avg(db2.availability), by:{`dt.entity.sql:db2_instance`}, from:-15m
-    | fieldsAdd latest_avail = arrayLast(avail)
-  ], sourceField:id, lookupField:`dt.entity.sql:db2_instance`, prefix:"m_"
-| fieldsAdd final_status = if(is_running == true and m_latest_avail >= 1, "UP", else: "DOWN")
-| summarize
-    total_instances = count(),
-    up = countIf(final_status == "UP"),
-    down = countIf(final_status == "DOWN")
+fetch dt.entity.kubernetes_node
+| fields node_entity_id = id, node_name = entity.name /* + cluster relationship */
+// LEFT lookup the timeseries ready/bad_conditions  -> condition_status
+// LEFT lookup dt.davis.problems (ACTIVE, non-duplicate) -> display_id
+| fieldsAdd status = if(condition_status == "Unhealthy" or isNotNull(display_id), "Unhealthy", else: "Healthy")
+| filter arraySize(array($Cluster)) == 0 or in(cluster_name, array($Cluster))
+| sort status desc
