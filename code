@@ -1,14 +1,5 @@
-timeseries
-    dropped_rx = sum(dt.kubernetes.pod.network_received_packets_dropped, default:0),
-    dropped_tx = sum(dt.kubernetes.pod.network_transmitted_packets_dropped, default:0),
-    by:{k8s.namespace.name, k8s.pod.name},
-    from:-24h
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd total_dropped_rx = arraySum(dropped_rx), total_dropped_tx = arraySum(dropped_tx)
-| fieldsAdd total_drops = total_dropped_rx + total_dropped_tx
-| sort total_drops desc
-| summarize
-    max_drops = takeFirst(total_drops),
-    worst_pod = takeFirst(k8s.pod.name)
-| fieldsAdd `Status` = if(max_drops > 0, concat("🔴 ", worst_pod, " — ", toString(max_drops), " drops"), else: "🟢 Healthy — No Packet Drops")
-| fields `Status`
+fetch metric.series
+| filter startsWith(metric.key, "dt.kubernetes.pod")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
+
