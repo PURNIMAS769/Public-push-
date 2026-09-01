@@ -1,13 +1,73 @@
-timeseries
-    limits_cpu = avg(dt.kubernetes.container.limits_cpu, default:0),
-    requests_cpu = avg(dt.kubernetes.container.requests_cpu, default:0),
-    limits_memory = avg(dt.kubernetes.container.limits_memory, default:0),
-    requests_memory = avg(dt.kubernetes.container.requests_memory, default:0),
-    by:{k8s.cluster.name, k8s.namespace.name, k8s.container.name},
-    from:-1h
-| filter k8s.namespace.name == "app00002734-paperless-inventory"
-| fieldsAdd `Limits CPU` = arrayLast(limits_cpu), `Requests CPU` = arrayLast(requests_cpu)
-| fieldsAdd `Limits Memory (MB)` = round(arrayLast(limits_memory)/1048576, decimals:1)
-| fieldsAdd `Requests Memory (MB)` = round(arrayLast(requests_memory)/1048576, decimals:1)
-| fields k8s.cluster.name, k8s.container.name, `Limits CPU`, `Requests CPU`, `Limits Memory (MB)`, `Requests Memory (MB)`
-| sort k8s.cluster.name asc
+data record(goal = 99.9)
+| fields Reliability_Goal = goal
+
+
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
+| fieldsAdd host = runs_on[dt.entity.host]
+| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
+| fieldsKeep all_ids
+| expand check_id = all_ids
+| join [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
+    | expand affected_entity_ids
+    | fieldsAdd downtime_ms = if(isNotNull(event.end), (event.end - event.start) / 1ms, else: (now() - event.start) / 1ms)
+    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
+], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
+| summarize total_downtime_ms = sum(p.downtime_ms)
+| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
+| fieldsAdd total_period_ms = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1ms
+| fieldsAdd availability_pct = round((1 - (total_downtime_ms / total_period_ms)) * 100, decimals:2)
+| fieldsAdd Status = if(availability_pct >= 99.9, "✅ YES - On Target", else: "❌ NO - Below Target")
+| fields Status
+
+
+
+data record(target = 99.9)
+| fieldsAdd allowed_bad = 100 - target
+| fieldsAdd total_hrs = (allowed_bad / 100) * 720
+| fields Allowed_Downtime_Hours = round(total_hrs, decimals:2)
+
+
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
+| fieldsAdd host = runs_on[dt.entity.host]
+| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
+| fieldsKeep all_ids
+| expand check_id = all_ids
+| join [
+    fetch dt.davis.problems, from:-30d
+    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
+    | expand affected_entity_ids
+    | fieldsAdd downtime_ms = if(isNotNull(event.end), (event.end - event.start) / 1ms, else: (now() - event.start) / 1ms)
+    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
+], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
+| summarize total_downtime_ms = sum(p.downtime_ms)
+| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
+| fieldsAdd used_hrs = total_downtime_ms / 3600000
+| fields Downtime_Used = round(used_hrs, decimals:2)
+
+
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00002734") > -1
+| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
+| fieldsAdd host = runs_on[dt.entity.host]
+| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
+| fieldsKeep all_ids
+| expand check_id = all_ids
+| join [
+    fetch dt.davis.problems, from:-30d
+    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
+    | expand affected_entity_ids
+    | fieldsAdd downtime_ms = if(isNotNull(event.end), (event.end - event.start) / 1ms, else: (now() - event.start) / 1ms)
+    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
+], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
+| summarize total_downtime_ms = sum(p.downtime_ms)
+| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
+| fieldsAdd used_hrs = total_downtime_ms / 3600000
+| fieldsAdd allowed_hrs = 0.72
+| fieldsAdd remain_hrs = allowed_hrs - used_hrs
+| fields Remaining_Budget = round(remain_hrs, decimals:2)
