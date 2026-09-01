@@ -1,8 +1,10 @@
 fetch dt.entity.custom_device
-| filter contains(toString(technology), "NUTANIX") or contains(lower(entity.name), "nutanix")
-| fields id, entity.name, technology
+| fieldsAdd entity.type
+| summarize count(), by:{entity.type}
+| sort count() desc
+
 
 fetch dt.entity.host
-| fieldsAdd hostGroup, tags, virtualizationInfo
-| filter contains(toString(tags), "Nutanix") or contains(toString(hostGroup), "NUTANIX") or contains(toString(virtualizationInfo), "NUTANIX")
-| fields id, entity.name, hostGroup, tags
+| fieldsAdd hostGroupName, tags
+| filter contains(lower(hostGroupName), "nutanix") or contains(lower(toString(tags)), "nutanix")
+| fields id, entity.name, hostGroupName, tags
