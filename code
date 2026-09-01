@@ -1,6 +1,13 @@
 timeseries avail = avg(dt.host.availability), by:{dt.entity.host}
+| lookup [fetch dt.entity.host | filter hypervisorType == "AHV" | fields id, entity.name, hypervisorType],
+    sourceField:dt.entity.host, lookupField:id
+| filter isNotNull(lookup.entity.name)
+| fieldsAdd hostName = lookup.entity.name, hypervisorType = lookup.hypervisorType
+| fields hostName, hypervisorType, avail
+
+
+timeseries avail = avg(dt.host.availability), by:{dt.entity.host}
 | lookup [fetch dt.entity.host | filter hypervisorType == "AHV" | fields id, entity.name],
     sourceField:dt.entity.host, lookupField:id
 | filter isNotNull(lookup.entity.name)
-| fieldsAdd hostName = lookup.entity.name
-| fields hostName, avail
+| summarize count()
