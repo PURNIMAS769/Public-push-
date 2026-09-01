@@ -1,18 +1,5 @@
-fetch dt.davis.problems
-| filter isNull(dt.davis.is_duplicate) or not(dt.davis.is_duplicate)
-| expand affected_entity_ids
-| filter matchesValue(affected_entity_types, "dt.entity.host")
-| lookup [
-    fetch dt.entity.host
-    | filter in(id, classicEntitySelector("type(HOST),osType(WINDOWS)"))
-    | filter contains(toString(tags), "AYS:MSP_Windows")
-    | filter not(contains(toString(tags), "CMDB-ENV:Production"))
-    | fields id
-  ], sourceField: affected_entity_ids, lookupField: id, prefix: "host."
-| filter isNotNull(host.id)
-| summarize alert_category = takeFirst(event.category),
-    start_time = takeFirst(event.start),
-    end_time = takeFirst(event.end),
-    by: { display_id, event.id }
-| makeTimeseries count(), by: { alert_category }, interval: 1h,
-    spread: timeframe(from:start_time, to:coalesce(end_time, now()))
+timeseries limits_cpu = avg(dt.kubernetes.container.limits_cpu),
+by:{k8s.cluster.name, k8s.namespace.name, k8s.container.name},
+from:-24h
+| filter k8s.namespace.name == "app00002734-paperless-inventory"
+| fields timeframe, interval, k8s.cluster.name, k8s.container.name, limits_cpu
