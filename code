@@ -1,18 +1,43 @@
-timeseries {
-    total = avg(db2.memory_total),
-    free = avg(db2.memory_free)
-},
-by:{`dt.entity.sql:db2_host`}, from:-2h
-| fieldsAdd used_val = arrayAvg(total) - arrayAvg(free)
-| fieldsAdd total_val = arrayAvg(total)
+fetch dt.entity.kubernetes_node
+| fields node_entity_id = id,
+         node_name      = entity.name,
+         cluster_id     = clustered_by[dt.entity.kubernetes_cluster]
+// --- resolve cluster ID -> readable cluster name ---
 | lookup [
-    fetch `dt.entity.sql:db2_host`
-    | fields id, host_name = entity.name
-  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
-| filter isNotNull(h_host_name)
-| fieldsAdd Host = h_host_name,
-    `Used (GB)` = round(used_val / 1024, decimals:2),
-    `Total (GB)` = round(total_val / 1024, decimals:2)
-| fields Host, `Used (GB)`, `Total (GB)`
-| sort `Used (GB)` desc
-| limit 20
+    fetch dt.entity.kubernetes_cluster
+    | fields id, cluster_name = entity.name
+  ],
+  sourceField: cluster_id, lookupField: id,
+  fields: {cluster_name}
+// --- LEFT lookup: ready / bad_conditions from the metric ---
+| lookup [
+    timeseries
+      { ready = sum(dt.kubernetes.node.conditions, scalar: true,
+                    filter: {node_condition == "Ready" and condition_status == true}, default: 0),
+        bad_conditions = sum(dt.kubernetes.node.conditions, scalar: true,
+                    filter: {node_condition != "Ready" and condition_status == true}, default: 0) },
+      by: {k8s.node.name}, from: -1h, to: -2m
+    | fieldsAdd condition_status = if(ready == 0 or bad_conditions > 0, "Unhealthy", else: "Healthy")
+  ],
+  sourceField: node_name, lookupField: k8s.node.name,
+  fields: {condition_status}
+// --- LEFT lookup: ACTIVE, non-duplicate problems affecting this node ---
+| lookup [
+    fetch dt.davis.problems, from: -24h
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | filter matchesValue(affected_entity_types, "dt.entity.kubernetes_node")
+    | expand affected_entity_ids
+    | fields affected_entity_ids, display_id
+  ],
+  sourceField: node_entity_id, lookupField: affected_entity_ids,
+  fields: {display_id}
+// --- final per-node status ---
+| fieldsAdd status = if(condition_status == "Unhealthy" or isNotNull(display_id),
+                        "Unhealthy", else: "Healthy")
+| filter arraySize(array($Cluster)) == 0 or in(cluster_name, array($Cluster))
+// --- roll up into counts ---
+| summarize {
+    total_nodes = count(),
+    healthy     = countIf(status == "Healthy"),
+    unhealthy   = countIf(status == "Unhealthy")
+  }
