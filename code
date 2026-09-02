@@ -1,13 +1,3 @@
-fetch metric.series
-| filter metric.key == "db2.memory_total"
-| fields metric.key, unit
-
-
-fetch metric.series
-| filter contains(metric.key, "cpu") and contains(metric.key, "db2")
-| summarize count(), by:{metric.key}
-
-
 timeseries {
     total = avg(db2.memory_total),
     free = avg(db2.memory_free)
@@ -21,8 +11,8 @@ by:{`dt.entity.sql:db2_host`}, from:-2h
   ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
 | filter isNotNull(h_host_name)
 | fieldsAdd Host = h_host_name,
-    `Used (GB)` = round(used_val / 1024 / 1024, decimals:2),
-    `Total (GB)` = round(total_val / 1024 / 1024, decimals:2)
+    `Used (GB)` = round(used_val / 1024, decimals:2),
+    `Total (GB)` = round(total_val / 1024, decimals:2)
 | fields Host, `Used (GB)`, `Total (GB)`
 | sort `Used (GB)` desc
 | limit 20
