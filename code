@@ -1,9 +1,5 @@
-timeseries conns = avg(db2.appl_cur_cons),
-by:{`dt.entity.sql:db2_database_member`}, from:-2h
-| fieldsAdd member = entityName(`dt.entity.sql:db2_database_member`)
-| fieldsAdd current_conns = round(arrayLast(conns)),
-    peak_conns = round(arrayMax(conns))
-| filter current_conns > 0
-| fields member, current_conns, peak_conns
-| sort peak_conns desc
-| limit 30
+timeseries active_conns = avg(db2.active_connections),
+by:{`dt.entity.sql:db2_instance`}
+| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
+| filter isNotNull(instance)
+| fields timeframe, interval, instance, active_conns
