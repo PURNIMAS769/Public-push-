@@ -1,5 +1,8 @@
-timeseries active_conns = avg(db2.active_connections),
-by:{`dt.entity.sql:db2_instance`}
+timeseries lock_timeouts = sum(db2.lock_timeouts.count),
+by:{`dt.entity.sql:db2_instance`}, from:-2h
 | fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
-| filter isNotNull(instance)
-| fields timeframe, interval, instance, active_conns
+| fieldsAdd timeout_count = round(arraySum(lock_timeouts))
+| filter timeout_count > 0
+| fields instance, timeout_count
+| sort timeout_count desc
+| limit 40
