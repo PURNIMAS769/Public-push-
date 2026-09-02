@@ -1,16 +1,5 @@
-timeseries lock_wait = sum(db2.lock_wait_time.count), by:{`dt.entity.sql:db2_instance`}, from:-15m
-| fieldsAdd latest_wait = arrayLast(lock_wait)
-| fieldsAdd is_waiting = if(latest_wait > 0, true, else: false)
-| summarize
-    total_instances = count(),
-    instances_waiting = countIf(is_waiting == true)
-
-
-
-timeseries lock_wait = sum(db2.lock_wait_time.count), by:{`dt.entity.sql:db2_instance`}, from:-15m
-| fieldsAdd latest_wait = arrayLast(lock_wait)
-| filter latest_wait > 0
+timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
+by:{`dt.entity.sql:db2_instance`}, from:-2h, interval:5m
 | fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
 | filter isNotNull(instance)
-| fields instance, `Latest Lock Wait (ms)` = latest_wait
-| sort `Latest Lock Wait (ms)` desc
+| fields timeframe, instance, logical_reads
