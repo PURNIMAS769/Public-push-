@@ -1,7 +1,16 @@
-timeseries lock_wait = sum(db2.lock_wait_time.count), by:{`dt.entity.sql:db2_instance`}, from:-2h
-| fieldsAdd total_lock_wait_sec = round(arraysum(lock_wait) / 1000, decimals:2)
+timeseries lock_wait = sum(db2.lock_wait_time.count), by:{`dt.entity.sql:db2_instance`}, from:-15m
+| fieldsAdd latest_wait = arrayLast(lock_wait)
+| fieldsAdd is_waiting = if(latest_wait > 0, true, else: false)
+| summarize
+    total_instances = count(),
+    instances_waiting = countIf(is_waiting == true)
+
+
+
+timeseries lock_wait = sum(db2.lock_wait_time.count), by:{`dt.entity.sql:db2_instance`}, from:-15m
+| fieldsAdd latest_wait = arrayLast(lock_wait)
+| filter latest_wait > 0
 | fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
 | filter isNotNull(instance)
-| fields instance, `Lock Wait (sec)` = total_lock_wait_sec
-| sort `Lock Wait (sec)` desc
-| limit 20
+| fields instance, `Latest Lock Wait (ms)` = latest_wait
+| sort `Latest Lock Wait (ms)` desc
