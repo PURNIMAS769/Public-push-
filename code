@@ -1,3 +1,4 @@
-SELECT HADR_STATE, HADR_CONNECT_STATUS FROM SYSIBMADM.MON_CURRENT_SQL
--- OR, more directly:
-SELECT * FROM TABLE(MON_GET_HADR(NULL)) AS T
+fetch metric.series
+| filter metric.key == "db2.hadr_state"
+| fieldsAdd allDims = dimensions
+| limit 3
