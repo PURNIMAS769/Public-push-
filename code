@@ -1,8 +1,7 @@
-timeseries {
-    app_commits = sum(db2.total_app_commits.count),
-    app_rollbacks = sum(db2.total_app_rollbacks.count),
-    int_commits = sum(db2.int_commits.count),
-    int_rollbacks = sum(db2.int_rollbacks.count)
-}, by:{`dt.entity.sql:db2_instance`}, from:-2h, interval:1m
-| fieldsAdd total_transactions = app_commits + app_rollbacks + int_commits + int_rollbacks
-| fields timeframe, `dt.entity.sql:db2_instance`, total_transactions
+timeseries lock_wait = sum(db2.lock_wait_time.count), by:{`dt.entity.sql:db2_instance`}, from:-2h
+| fieldsAdd total_lock_wait_sec = round(arraysum(lock_wait) / 1000, decimals:2)
+| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
+| filter isNotNull(instance)
+| fields instance, `Lock Wait (sec)` = total_lock_wait_sec
+| sort `Lock Wait (sec)` desc
+| limit 20
