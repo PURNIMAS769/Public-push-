@@ -1,8 +1,3 @@
-fetch `dt.entity.sql:db2_instance`
-| fields id, entity.name, runs_on
-| limit 3
-
-
 // --- Step 1: Host availability ---
 timeseries avail = avg(db2.availability),
 by:{`dt.entity.sql:db2_host`}, from:-30m
@@ -10,23 +5,23 @@ by:{`dt.entity.sql:db2_host`}, from:-30m
 | fieldsAdd host_name = entityName(`dt.entity.sql:db2_host`)
 | filter isNotNull(host_name)
 
-// --- Step 2: Bridge instance problems back to their parent host ---
+// --- Step 2: Bridge instance-level problems back to their parent host ---
 | lookup [
     fetch dt.davis.problems
     | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
     | filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
        or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
     | expand affected_entity_ids
-    | fieldsAdd resolved_host_id = affected_entity_ids   // works directly if problem is host-level
     | lookup [
         fetch `dt.entity.sql:db2_instance`
-        | fields id, host_ref = runs_on              // ⚠️ exact extraction pending Step 1 output above
+        | fieldsAdd host_ref = runs_on[`dt.entity.sql:db2_host`]
+        | fields id, host_ref
       ], sourceField:affected_entity_ids, lookupField:id, prefix:"i_"
     | fieldsAdd resolved_host_id = if(isNotNull(i_host_ref), i_host_ref, else: affected_entity_ids)
     | summarize problem_count = countDistinctExact(event.id), by:{resolved_host_id}
   ], sourceField:`dt.entity.sql:db2_host`, lookupField:resolved_host_id, prefix:"p_"
 
-// --- Step 3: Combined verdict — covers BOTH your cases in one line ---
+// --- Step 3: Combined verdict — covers BOTH your unhealthy cases ---
 | fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_resolved_host_id), "HEALTHY", else:"UNHEALTHY")
 | fields host_name, availability_pct, p_problem_count, health_status
 | sort health_status desc, availability_pct asc
