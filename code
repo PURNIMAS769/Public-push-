@@ -8,10 +8,13 @@ by:{`dt.entity.sql:db2_host`}, from:-30m
     | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
     | filter matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
     | expand affected_entity_ids
-    | lookup [ fetch `dt.entity.sql:db2_instance` | fields id, parent_host = runs_on ],
-      sourceField:affected_entity_ids, lookupField:id, prefix:"inst_"
-    | summarize problem_count = countDistinctExact(event.id), by:{inst_parent_host}
-  ], sourceField:`dt.entity.sql:db2_host`, lookupField:inst_parent_host, prefix:"p_"
+    | lookup [
+        fetch `dt.entity.sql:db2_instance`
+        | fieldsAdd parent_host_id = runs_on[id]
+        | fields id, parent_host_id
+      ], sourceField:affected_entity_ids, lookupField:id, prefix:"inst_"
+    | summarize problem_count = countDistinctExact(event.id), by:{inst_parent_host_id}
+  ], sourceField:`dt.entity.sql:db2_host`, lookupField:inst_parent_host_id, prefix:"p_"
 | fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_problem_count), "HEALTHY", else:"UNHEALTHY")
 | fields host_name, availability_pct, p_problem_count, health_status
 | sort health_status desc
