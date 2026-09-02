@@ -1,8 +1,11 @@
-timeseries lock_timeouts = sum(db2.lock_timeouts.count),
-by:{`dt.entity.sql:db2_instance`}, from:-2h
-| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
-| fieldsAdd timeout_count = round(arraySum(lock_timeouts))
-| filter timeout_count > 0
-| fields instance, timeout_count
-| sort timeout_count desc
-| limit 40
+timeseries state = avg(db2.hadr_state), by:{`dt.entity.sql:db2_instance`}, from:-24h
+| fieldsAdd state_val = arrayLast(state)
+| filter isNotNull(state_val)
+| summarize count(), by:{state_val}
+| sort state_val asc
+
+timeseries conn = avg(db2.hadr_connect_status), by:{`dt.entity.sql:db2_instance`}, from:-24h
+| fieldsAdd conn_val = arrayLast(conn)
+| filter isNotNull(conn_val)
+| summarize count(), by:{conn_val}
+| sort conn_val asc
