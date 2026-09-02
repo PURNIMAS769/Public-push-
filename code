@@ -1,15 +1,14 @@
 timeseries {
-    logical = sum(db2.bp.total_logical_reads.count),
-    physical = sum(db2.bp.total_physical_reads.count)
-}, by:{`dt.entity.sql:db2_instance`}, from:-2h
-| fieldsAdd total_logical = arraySum(logical), total_physical = arraySum(physical)
-| filter total_logical > 0
-| fieldsAdd hit_ratio_pct = round(((1 - (total_physical / total_logical)) * 100), decimals:2)
+    total_apps = avg(db2.appl_cur_cons),
+    active_conn = avg(db2.active_connections)
+}, by:{`dt.entity.sql:db2_instance`}, interval:5m
+| fieldsAdd apps = round(arrayLast(total_apps)), active = round(arrayLast(active_conn))
+| fieldsAdd idle = if(apps - active > 0, apps - active, else:0)
 | lookup [
     fetch `dt.entity.sql:db2_instance`
     | fields id, instance_name = entity.name
   ], sourceField:`dt.entity.sql:db2_instance`, lookupField:id, prefix:"i_"
 | filter isNotNull(i_instance_name)
-| fields Instance = i_instance_name, total_logical, total_physical, hit_ratio_pct
-| sort hit_ratio_pct asc
-| limit 20
+| fields Instance = i_instance_name, apps, active, idle
+| sort idle desc
+| limit 30
