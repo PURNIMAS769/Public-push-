@@ -1,11 +1,3 @@
-timeseries state = avg(db2.hadr_state), by:{`dt.entity.sql:db2_instance`}, from:-24h
-| fieldsAdd state_val = arrayLast(state)
-| filter isNotNull(state_val)
-| summarize count(), by:{state_val}
-| sort state_val asc
-
-timeseries conn = avg(db2.hadr_connect_status), by:{`dt.entity.sql:db2_instance`}, from:-24h
-| fieldsAdd conn_val = arrayLast(conn)
-| filter isNotNull(conn_val)
-| summarize count(), by:{conn_val}
-| sort conn_val asc
+SELECT HADR_STATE, HADR_CONNECT_STATUS FROM SYSIBMADM.MON_CURRENT_SQL
+-- OR, more directly:
+SELECT * FROM TABLE(MON_GET_HADR(NULL)) AS T
