@@ -1,7 +1,28 @@
-fetch dt.davis.events, from:-30d
-| filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
-   or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
-   or matchesValue(affected_entity_types, "dt.entity.sql:db2_database_member")
-   or matchesValue(affected_entity_types, "dt.entity.sql:db2_tablespace")
-| summarize count(), by:{event.type, affected_entity_types}
-| sort `count()` desc
+fetch metric.series
+| filter metric.key == "db2.memory_total"
+| fields metric.key, unit
+
+
+fetch metric.series
+| filter contains(metric.key, "cpu") and contains(metric.key, "db2")
+| summarize count(), by:{metric.key}
+
+
+timeseries {
+    total = avg(db2.memory_total),
+    free = avg(db2.memory_free)
+},
+by:{`dt.entity.sql:db2_host`}, from:-2h
+| fieldsAdd used_val = arrayAvg(total) - arrayAvg(free)
+| fieldsAdd total_val = arrayAvg(total)
+| lookup [
+    fetch `dt.entity.sql:db2_host`
+    | fields id, host_name = entity.name
+  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
+| filter isNotNull(h_host_name)
+| fieldsAdd Host = h_host_name,
+    `Used (GB)` = round(used_val / 1024 / 1024, decimals:2),
+    `Total (GB)` = round(total_val / 1024 / 1024, decimals:2)
+| fields Host, `Used (GB)`, `Total (GB)`
+| sort `Used (GB)` desc
+| limit 20
