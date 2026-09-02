@@ -1,14 +1,5 @@
-timeseries {
-    total_apps = avg(db2.appl_cur_cons),
-    active_conn = avg(db2.active_connections)
-}, by:{`dt.entity.sql:db2_instance`}, interval:5m
-| fieldsAdd apps = round(arrayLast(total_apps)), active = round(arrayLast(active_conn))
-| fieldsAdd idle = if(apps - active > 0, apps - active, else:0)
-| lookup [
-    fetch `dt.entity.sql:db2_instance`
-    | fields id, instance_name = entity.name
-  ], sourceField:`dt.entity.sql:db2_instance`, lookupField:id, prefix:"i_"
-| filter isNotNull(i_instance_name)
-| fields Instance = i_instance_name, apps, active, idle
-| sort idle desc
-| limit 30
+fetch metric.series
+
+| filter metric.key == "db2.appl_cur_cons"
+
+| fields metric.key, unit, description
