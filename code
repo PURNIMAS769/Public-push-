@@ -1,31 +1,23 @@
-// --- Step 1: Host availability ---
-timeseries avail = avg(db2.availability),
-by:{`dt.entity.sql:db2_host`}, from:-30m
-| fieldsAdd availability_pct = round(arrayAvg(avail))
-| fieldsAdd host_name = entityName(`dt.entity.sql:db2_host`)
-| filter isNotNull(host_name)
-
-// --- Step 2: Bridge instance-level problems back to their parent host ---
-| lookup [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
-       or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
-    | expand affected_entity_ids
-    | lookup [
-        fetch `dt.entity.sql:db2_instance`
-        | fieldsAdd host_ref = runs_on[`dt.entity.sql:db2_host`]
-        | fields id, host_ref
-      ], sourceField:affected_entity_ids, lookupField:id, prefix:"i_"
-    | fieldsAdd resolved_host_id = if(isNotNull(i_host_ref), i_host_ref, else: affected_entity_ids)
-    | summarize problem_count = countDistinctExact(event.id), by:{resolved_host_id}
-  ], sourceField:`dt.entity.sql:db2_host`, lookupField:resolved_host_id, prefix:"p_"
-
-// --- Step 3: Combined verdict ---
-| fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_resolved_host_id), "HEALTHY", else:"UNHEALTHY")
-
-// --- Step 4: Rollup counts ---
+fetch dt.davis.problems, from:-24h
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
+   or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
 | summarize
-    total_hosts = count(),
-    healthy = countIf(health_status == "HEALTHY"),
-    unhealthy = countIf(health_status == "UNHEALTHY")
+    problem_title = takeFirst(event.name),
+    severity = takeFirst(event.category),
+    status = takeFirst(event.status),
+    root_cause = takeFirst(root_cause_entity_name),
+    affected_types = takeFirst(affected_entity_types),
+    start_time = takeFirst(event.start),
+    problem_event_id = takeFirst(event.id),
+    by:{display_id}
+| fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
+| fieldsAdd hrs = floor(total_seconds / 3600), mins = floor((total_seconds % 3600) / 60)
+| fieldsAdd age_formatted = concat(toString(hrs), "h ", toString(mins), "m")
+| fieldsAdd problem_link = concat(
+    "https://wdf17482.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
+    problem_event_id, "?from=now()-24h&to=now()")
+| sort start_time desc
+| fields display_id, problem_title, severity, status, root_cause,
+    affected_types, start_time, age_formatted, problem_link
+| limit 50
