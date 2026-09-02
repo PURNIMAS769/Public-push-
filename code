@@ -1,5 +1,5 @@
-timeseries physical_reads = sum(db2.bp.total_physical_reads.count),
+timeseries writes = sum(db2.bp.total_writes.count),
 by:{`dt.entity.sql:db2_instance`}, from:-2h, interval:5m
 | fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
 | filter isNotNull(instance)
-| fields timeframe, interval, instance, physical_reads
+| fields timeframe, interval, instance, writes
