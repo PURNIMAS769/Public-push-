@@ -1,5 +1,7 @@
-fetch dt.davis.problems, from:-30d
-| filter not(dt.davis.is_duplicate)
+fetch dt.davis.events, from:-30d
 | filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
    or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
-| makeTimeseries alert_count = countDistinctExact(event.id), by:{event.category}
+   or matchesValue(affected_entity_types, "dt.entity.sql:db2_database_member")
+   or matchesValue(affected_entity_types, "dt.entity.sql:db2_tablespace")
+| summarize count(), by:{event.type, affected_entity_types}
+| sort `count()` desc
