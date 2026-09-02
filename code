@@ -1,4 +1,17 @@
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter contains(event.name, "Transaction Log Used above 90 Percent")
-| fields display_id, event.name, affected_entity_types, affected_entity_ids, entity_tags
+timeseries avail = avg(db2.availability),
+by:{`dt.entity.sql:db2_host`}, from:-30m
+| fieldsAdd availability_pct = round(arrayAvg(avail))
+| fieldsAdd host_name = entityName(`dt.entity.sql:db2_host`)
+| filter isNotNull(host_name)
+| lookup [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | filter matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
+    | expand affected_entity_ids
+    | lookup [ fetch `dt.entity.sql:db2_instance` | fields id, parent_host = runs_on ],
+      sourceField:affected_entity_ids, lookupField:id, prefix:"inst_"
+    | summarize problem_count = countDistinctExact(event.id), by:{inst_parent_host}
+  ], sourceField:`dt.entity.sql:db2_host`, lookupField:inst_parent_host, prefix:"p_"
+| fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_problem_count), "HEALTHY", else:"UNHEALTHY")
+| fields host_name, availability_pct, p_problem_count, health_status
+| sort health_status desc
