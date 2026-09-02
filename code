@@ -21,8 +21,11 @@ by:{`dt.entity.sql:db2_host`}, from:-30m
     | summarize problem_count = countDistinctExact(event.id), by:{resolved_host_id}
   ], sourceField:`dt.entity.sql:db2_host`, lookupField:resolved_host_id, prefix:"p_"
 
-// --- Step 3: Combined verdict — covers BOTH your unhealthy cases ---
+// --- Step 3: Combined verdict ---
 | fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_resolved_host_id), "HEALTHY", else:"UNHEALTHY")
-| fields host_name, availability_pct, p_problem_count, health_status
-| sort health_status desc, availability_pct asc
-| limit 2000
+
+// --- Step 4: Rollup counts ---
+| summarize
+    total_hosts = count(),
+    healthy = countIf(health_status == "HEALTHY"),
+    unhealthy = countIf(health_status == "UNHEALTHY")
