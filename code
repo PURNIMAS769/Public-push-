@@ -1,27 +1,23 @@
-timeseries a = avg(dt.osservice.availability),
-  by:{ dt.entity.host, dt.osservice.status },
-  filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
-  from:-2h
-| filter dt.osservice.status == "stopped"
-| summarize by:{ dt.entity.host }
+// ── 1) Authoritative RUNNING host universe → 547 ──
+fetch dt.entity.host
+| filter state == "RUNNING"
+| filter matchesPhrase(toString(tags), "MSSQL")
+         or matchesPhrase(toString(tags), "MSP_Database_MSSQL")   // safety net for untagged SQL hosts
+| fieldsAdd host_name = entity.name
+| fields id, host_name
+
+// ── 2) LEFT-join the authoritative stopped-agent set (your 15) ──
 | lookup [
-    fetch dt.entity.host
-    | fieldsAdd tg = toString(tags)
-    | fields id, hn = entity.name, st = state, tg
-  ], sourceField:dt.entity.host, lookupField:id, prefix:"h_"
-| fieldsAdd has_MSSQL_tag = matchesPhrase(h_tg, "MSSQL")
-| fieldsAdd is_running    = (h_st == "RUNNING")
-| fields h_hn, h_st, is_running, has_MSSQL_tag, h_tg
-| sort has_MSSQL_tag asc, is_running asc
+    timeseries a = avg(dt.osservice.availability),
+      by:{ dt.entity.host },
+      filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent")
+              and dt.osservice.status == "stopped",
+      from:-2h
+    | summarize by:{ dt.entity.host }
+    | fieldsAdd agent_stopped = 1
+  ], sourceField:id, lookupField:dt.entity.host, prefix:"svc_"
 
-
-// Start from ALL hosts with a stopped SQL Agent → guarantees 15
-timeseries a = avg(dt.osservice.availability),
-  by:{ dt.entity.host, dt.osservice.status },
-  filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
-  from:-2h
-| filter dt.osservice.status == "stopped"
-| summarize by:{ dt.entity.host }
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd health_status = "UNHEALTHY"
-| fields host_name, health_status, dt.entity.host
+// ── 3) Health verdict ──
+| fieldsAdd health_status = if(svc_agent_stopped == 1, "UNHEALTHY", else:"HEALTHY")
+| fields host_name, health_status, id
+| sort health_status desc, host_name asc
