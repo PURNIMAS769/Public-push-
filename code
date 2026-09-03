@@ -1,8 +1,4 @@
-fetch metric.series
-| filter metric.key == "db2.hadr_state"
-| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
-| filter isNotNull(instance)
-| fieldsAdd health = if(hadr_state == "PEER" and hadr_connect_status == "CONNECTED", "HEALTHY", else:"CHECK")
-| fields instance, hadr_role, hadr_state, hadr_connect_status, health
-| sort health asc
-| limit 30
+fetch metric.series 
+| filter contains(metric.key, "mongodb") 
+| summarize count(), by:{metric.key} 
+| sort metric.key asc
