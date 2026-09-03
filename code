@@ -1,4 +1,9 @@
-fetch metric.series 
-| filter contains(metric.key, "mongodb") 
-| summarize count(), by:{metric.key} 
-| sort metric.key asc
+fetch dt.entity.process_group_instance
+| filter contains(entity.name, "mongod") or contains(entity.name, "mongo")
+| fields entity.name, id
+| limit 50
+
+
+fetch metric.series
+| filter contains(metric.key, "dt.process.cpu") or contains(metric.key, "dt.process.memory")
+| summarize count(), by:{metric.key}
