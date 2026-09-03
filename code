@@ -1,22 +1,29 @@
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
-| expand affected_entity_ids
+// ── Universe: 547 (exact MSSQL tag + running host entities) ──
+fetch dt.entity.host
+| filter state == "RUNNING"
+| expand tags | filter toString(tags) == "MSSQL"
+| summarize by:{ id, host_name = entity.name }
+
+// ── Signal: ANY active Davis PID affecting the host OR anything running on it ──
 | lookup [
-    fetch `dt.entity.os:service`
-    | fieldsAdd hid = runs_on[dt.entity.host]
-    | expand hid
-    | fields id, hid
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"s_"
-| fields event.name, affected_entity_ids, s_hid
-| limit 20
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | expand affected_entity_ids
 
+    // (a) problem directly on the host  → rules 1 & 2
+    | fieldsAdd h_direct = if(matchesPhrase(affected_entity_ids, "HOST-"),
+                              affected_entity_ids, else:null)
 
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
-| expand affected_entity_ids
-| fieldsAdd id_prefix = if(matchesPhrase(affected_entity_ids, "HOST-"), "HOST",
-                        else: if(matchesPhrase(affected_entity_ids, "CUSTOM_DEVICE-"), "CUSTOM_DEVICE",
-                        else: if(matchesPhrase(affected_entity_ids, "OS_SERVICE"), "OS_SERVICE", else:"OTHER")))
-| summarize cnt = count(), by:{ id_prefix }
+    // (b) problem on an OS service / SQL-Agent custom device → runs_on host  → rule 4
+    | lookup [ fetch `dt.entity.os:service`
+               | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
+        sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
+
+    // (c) problem on a process instance → runs_on host  → rule 3
+    | lookup [ fetch dt.entity.process_group_instance
+               | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
+        sourceField:affected_entity_ids, lookupField:id, prefix:"pgi_"
+
+    | fieldsAdd resolved_host = coalesce(h_direct, svc_hh, pgi_hh)
+    | filter isNotNull(resolved_host)
+    | summarize open_pids = countDistinct(event.id), by:{ res
