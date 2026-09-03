@@ -1,15 +1,15 @@
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
-| fields event.description
-| limit 3
+timeseries agent_avail = avg(dt.osservice.availability),
+  by:{ dt.entity.host, `dt.entity.os:service` },
+  filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
+  from:-2h
+| fieldsAdd host_name = entityName(dt.entity.host)
+| fieldsAdd svc_name  = entityName(`dt.entity.os:service`)
+| fields host_name, svc_name, agent_avail
+| limit 30
 
 
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
-| fields event.name,
-         smartscape.affected_entity.ids,
-         smartscape.affected_entity.types,
-         affected_entity_ids
-| limit 20
+fetch dt.entity.custom_device, from:-30d
+| filter matchesPhrase(entity.name, "SQL Server Agent")
+| fieldsAdd rel = runs_on
+| fields id, entity.name, entity.detected_name, ip_addresses, rel
+| limit 30
