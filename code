@@ -1,23 +1,32 @@
-// ── 1) Authoritative RUNNING host universe → 547 ──
+// ── Universe: exact MSSQL tag + running → 547 ──
 fetch dt.entity.host
 | filter state == "RUNNING"
-| filter matchesPhrase(toString(tags), "MSSQL")
-         or matchesPhrase(toString(tags), "MSP_Database_MSSQL")   // safety net for untagged SQL hosts
-| fieldsAdd host_name = entity.name
-| fields id, host_name
+| expand tags
+| filter toString(tags) == "MSSQL"
+| summarize by:{ id, host_name = entity.name }
 
-// ── 2) LEFT-join the authoritative stopped-agent set (your 15) ──
+// ── Signal A: any ACTIVE Davis problem affecting the HOST directly (memory, disk, etc. = your 7) ──
 | lookup [
-    timeseries a = avg(dt.osservice.availability),
-      by:{ dt.entity.host },
-      filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent")
-              and dt.osservice.status == "stopped",
-      from:-2h
-    | summarize by:{ dt.entity.host }
-    | fieldsAdd agent_stopped = 1
-  ], sourceField:id, lookupField:dt.entity.host, prefix:"svc_"
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | filter matchesValue(affected_entity_types, "dt.entity.host")
+    | expand affected_entity_ids
+    | summarize host_problems = countDistinct(event.id), by:{ affected_entity_ids }
+  ], sourceField:id, lookupField:affected_entity_ids, prefix:"a_"
 
-// ── 3) Health verdict ──
-| fieldsAdd health_status = if(svc_agent_stopped == 1, "UNHEALTHY", else:"HEALTHY")
-| fields host_name, health_status, id
+// ── Signal B: SQL Server Agent OS service stopped (the 15) ──
+| lookup [
+    timeseries s = avg(dt.osservice.availability),
+      by:{ dt.entity.host, dt.osservice.status },
+      filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
+      from:-2h
+    | summarize agent_stopped = sum(if(dt.osservice.status == "stopped", 1, else:0)),
+                by:{ dt.entity.host }
+  ], sourceField:id, lookupField:dt.entity.host, prefix:"b_"
+
+// ── Combined verdict: UNHEALTHY if EITHER signal fires ──
+| fieldsAdd host_problems = coalesce(a_host_problems, 0)
+| fieldsAdd agent_stopped = coalesce(b_agent_stopped, 0)
+| fieldsAdd health_status = if(host_problems > 0 or agent_stopped > 0, "UNHEALTHY", else:"HEALTHY")
+| fields host_name, health_status, host_problems, agent_stopped, id
 | sort health_status desc, host_name asc
