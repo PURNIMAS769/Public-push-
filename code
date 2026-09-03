@@ -2,6 +2,9 @@ fetch dt.davis.problems
 | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
 | filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
 | expand affected_entity_ids
-| fieldsAdd affected_type = entityName(affected_entity_ids)
-| fields event.name, affected_entity_ids, affected_entity_types
+| lookup [
+    fetch dt.entity.custom_device
+    | fields id, cd_name = entity.name, cd_detected = entity.detected_name
+  ], sourceField:affected_entity_ids, lookupField:id, prefix:"cd_"
+| fields event.name, affected_entity_ids, cd_cd_name, cd_cd_detected
 | limit 20
