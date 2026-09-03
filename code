@@ -26,4 +26,11 @@ fetch dt.entity.host
 
     | fieldsAdd resolved_host = coalesce(h_direct, svc_hh, pgi_hh)
     | filter isNotNull(resolved_host)
-    | summarize open_pids = countDistinct(event.id), by:{ res
+    | summarize open_pids = countDistinct(event.id), by:{ resolved_host }
+  ], sourceField:id, lookupField:resolved_host, prefix:"p_"
+
+// ── Verdict: red if the host has ANY open PID (host, process, or service) ──
+| fieldsAdd open_pids = coalesce(p_open_pids, 0)
+| fieldsAdd health_status = if(open_pids > 0, "UNHEALTHY", else:"HEALTHY")
+| fields host_name, open_pids, health_status, id
+| sort health_status desc, host_name asc
