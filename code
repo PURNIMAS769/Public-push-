@@ -5,8 +5,18 @@ fetch dt.davis.problems
 | lookup [
     fetch `dt.entity.os:service`
     | fieldsAdd hid = runs_on[dt.entity.host]
+    | expand hid
     | fields id, hid
   ], sourceField:affected_entity_ids, lookupField:id, prefix:"s_"
-| fieldsAdd mapped_host = entityName(s_hid)
-| fields event.name, affected_entity_ids, s_hid, mapped_host
+| fields event.name, affected_entity_ids, s_hid
 | limit 20
+
+
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
+| expand affected_entity_ids
+| fieldsAdd id_prefix = if(matchesPhrase(affected_entity_ids, "HOST-"), "HOST",
+                        else: if(matchesPhrase(affected_entity_ids, "CUSTOM_DEVICE-"), "CUSTOM_DEVICE",
+                        else: if(matchesPhrase(affected_entity_ids, "OS_SERVICE"), "OS_SERVICE", else:"OTHER")))
+| summarize cnt = count(), by:{ id_prefix }
