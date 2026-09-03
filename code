@@ -1,28 +1,7 @@
-// STEP 1 — authoritative MSSQL host list (drives result → all 16 appear)
-fetch dt.entity.host
-| fieldsAdd tags_str = toString(tags)
-| filter matchesPhrase(tags_str, "MSSQL")          // confirm exact tag via discovery below
-| fields id, host_name = entity.name
-
-// STEP 2 — LEFT-join availability (non-reporting host is KEPT, not dropped)
-| lookup [
-    timeseries avail = avg(dt.host.availability), by:{dt.entity.host}
-    | fieldsAdd availability_pct = round(arrayAvg(avail) * 100, decimals:2)
-    | fields dt.entity.host, availability_pct
-  ], sourceField:id, lookupField:dt.entity.host, prefix:"a_"
-
-// STEP 3 — LEFT-join active Davis problems
-| lookup [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | filter matchesValue(affected_entity_types, "dt.entity.host")
-    | expand affected_entity_ids
-    | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
-  ], sourceField:id, lookupField:affected_entity_ids, prefix:"p_"
-
-// STEP 4 — health verdict (treat non-reporting as UNHEALTHY, not invisible)
-| fieldsAdd availability_pct = coalesce(a_availability_pct, 0)
-| fieldsAdd problem_count    = coalesce(p_problem_count, 0)
-| fieldsAdd health_status = if(availability_pct >= 100 and problem_count == 0, "HEALTHY", else:"UNHEALTHY")
-| fields host_name, availability_pct, problem_count, health_status, id
-| sort health_status desc, availability_pct asc
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
+| expand affected_entity_ids
+| fieldsAdd affected_type = entityName(affected_entity_ids)
+| fields event.name, affected_entity_ids, affected_entity_types
+| limit 20
