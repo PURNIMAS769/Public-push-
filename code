@@ -1,9 +1,15 @@
 fetch dt.davis.problems
 | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
 | filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
+| fields event.description
+| limit 3
+
+
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
 | fields event.name,
-         event.description,
-         root_cause_entity_name,
-         entity_tags,
+         smartscape.affected_entity.ids,
+         smartscape.affected_entity.types,
          affected_entity_ids
 | limit 20
