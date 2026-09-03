@@ -1,18 +1,9 @@
-// 1) Authoritative running host list → fixes 573 → 547
-fetch dt.entity.host
-| filter matchesPhrase(toString(tags), "MSSQL") and state == "RUNNING"
-| fields id, host_name = entity.name
-
-// 2) LEFT-join the set of hosts that have ANY active problem (via Davis's host correlation)
-| lookup [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | expand hid = runs_on[dt.entity.host]
-    | summarize problem_count = countDistinct(event.id), by:{hid}
-  ], sourceField:id, lookupField:hid, prefix:"p_"
-
-// 3) Health verdict → fixes 7 → 16
-| fieldsAdd problem_count = coalesce(p_problem_count, 0)
-| fieldsAdd health_status = if(problem_count > 0, "UNHEALTHY", else:"HEALTHY")
-| fields host_name, problem_count, health_status, id
-| sort health_status desc, host_name asc
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
+| fields event.name,
+         event.description,
+         root_cause_entity_name,
+         entity_tags,
+         affected_entity_ids
+| limit 20
