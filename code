@@ -1,32 +1,12 @@
-// ── Universe: exact MSSQL tag + running → 547 ──
-fetch dt.entity.host
-| filter state == "RUNNING"
-| expand tags
-| filter toString(tags) == "MSSQL"
-| summarize by:{ id, host_name = entity.name }
-
-// ── Signal A: any ACTIVE Davis problem affecting the HOST directly (memory, disk, etc. = your 7) ──
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter matchesPhrase(event.name, "Major_WindowsService_MSSQL")
+| expand affected_entity_ids
 | lookup [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | filter matchesValue(affected_entity_types, "dt.entity.host")
-    | expand affected_entity_ids
-    | summarize host_problems = countDistinct(event.id), by:{ affected_entity_ids }
-  ], sourceField:id, lookupField:affected_entity_ids, prefix:"a_"
-
-// ── Signal B: SQL Server Agent OS service stopped (the 15) ──
-| lookup [
-    timeseries s = avg(dt.osservice.availability),
-      by:{ dt.entity.host, dt.osservice.status },
-      filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
-      from:-2h
-    | summarize agent_stopped = sum(if(dt.osservice.status == "stopped", 1, else:0)),
-                by:{ dt.entity.host }
-  ], sourceField:id, lookupField:dt.entity.host, prefix:"b_"
-
-// ── Combined verdict: UNHEALTHY if EITHER signal fires ──
-| fieldsAdd host_problems = coalesce(a_host_problems, 0)
-| fieldsAdd agent_stopped = coalesce(b_agent_stopped, 0)
-| fieldsAdd health_status = if(host_problems > 0 or agent_stopped > 0, "UNHEALTHY", else:"HEALTHY")
-| fields host_name, health_status, host_problems, agent_stopped, id
-| sort health_status desc, host_name asc
+    fetch `dt.entity.os:service`
+    | fieldsAdd hid = runs_on[dt.entity.host]
+    | fields id, hid
+  ], sourceField:affected_entity_ids, lookupField:id, prefix:"s_"
+| fieldsAdd mapped_host = entityName(s_hid)
+| fields event.name, affected_entity_ids, s_hid, mapped_host
+| limit 20
