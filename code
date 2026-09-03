@@ -1,15 +1,33 @@
 timeseries agent_avail = avg(dt.osservice.availability),
-  by:{ dt.entity.host, `dt.entity.os:service` },
+  by:{ dt.entity.host, `dt.entity.os:service`, dt.osservice.status },
   filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
   from:-2h
 | fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd svc_name  = entityName(`dt.entity.os:service`)
-| fields host_name, svc_name, agent_avail
-| limit 30
+| fieldsAdd last_avail = arrayLast(agent_avail)
+| fields host_name, dt.osservice.status, last_avail
+| sort dt.osservice.status asc
+| limit 60
 
 
-fetch dt.entity.custom_device, from:-30d
-| filter matchesPhrase(entity.name, "SQL Server Agent")
-| fieldsAdd rel = runs_on
-| fields id, entity.name, entity.detected_name, ip_addresses, rel
-| limit 30
+// authoritative running host list → 547
+fetch dt.entity.host
+| filter matchesPhrase(toString(tags), "MSSQL") and state == "RUNNING"
+| fieldsAdd host_name = entity.name
+| fields id, host_name
+
+// LEFT-join hosts whose SQL Server Agent is NOT running → +9
+| lookup [
+    timeseries a = avg(dt.osservice.availability),
+      by:{ dt.entity.host, dt.osservice.status },
+      filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
+      from:-2h
+    | fieldsAdd st = takeLast(dt.osservice.status)     // status confirmed via probe
+    | filter st == "stopped" or st == "failed"
+    | summarize by:{dt.entity.host}
+  ], sourceField:id, lookupField:dt.entity.host, prefix:"svc_"
+
+// combine with host/resource problems (your existing 7) for full health verdict
+| fieldsAdd agent_down = if(isNotNull(svc_dt.entity.host), 1, else:0)
+| fieldsAdd health_status = if(agent_down == 1, "UNHEALTHY", else:"HEALTHY")
+| fields host_name, health_status, id
+| sort health_status desc, host_name asc
