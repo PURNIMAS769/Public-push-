@@ -1,21 +1,27 @@
-| filter dt.osservice.status == "stopped" or dt.osservice.status == "failed"
-
-
 timeseries a = avg(dt.osservice.availability),
   by:{ dt.entity.host, dt.osservice.status },
   filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
   from:-2h
-| summarize host_count = countDistinct(dt.entity.host), by:{ dt.osservice.status }
-| sort dt.osservice.status asc
+| filter dt.osservice.status == "stopped"
+| summarize by:{ dt.entity.host }
+| lookup [
+    fetch dt.entity.host
+    | fieldsAdd tg = toString(tags)
+    | fields id, hn = entity.name, st = state, tg
+  ], sourceField:dt.entity.host, lookupField:id, prefix:"h_"
+| fieldsAdd has_MSSQL_tag = matchesPhrase(h_tg, "MSSQL")
+| fieldsAdd is_running    = (h_st == "RUNNING")
+| fields h_hn, h_st, is_running, has_MSSQL_tag, h_tg
+| sort has_MSSQL_tag asc, is_running asc
 
 
-timeseries from:-2h,
-  by:{ dt.source_entity },
-  count()
-| filter matchesPhrase(toString(dt.source_entity), "CUSTOM_DEVICE")
-| limit 20
-
-fetch metric.series, from:-2h
-| filter matchesPhrase(toString(dt.entity.custom_device), "CUSTOM_DEVICE-2669EEA5121311CF")
-| summarize by:{ metric.key }
-| limit 50
+// Start from ALL hosts with a stopped SQL Agent → guarantees 15
+timeseries a = avg(dt.osservice.availability),
+  by:{ dt.entity.host, dt.osservice.status },
+  filter: matchesPhrase(entityName(`dt.entity.os:service`), "SQL Server Agent"),
+  from:-2h
+| filter dt.osservice.status == "stopped"
+| summarize by:{ dt.entity.host }
+| fieldsAdd host_name = entityName(dt.entity.host)
+| fieldsAdd health_status = "UNHEALTHY"
+| fields host_name, health_status, dt.entity.host
