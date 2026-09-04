@@ -1,11 +1,8 @@
-// Check 1: Does dt.host.availability.state exist and what values does it report for your MongoDB hosts?
-fetch metric.series
-| filter contains(metric.key, "availability")
-| summarize count(), by:{metric.key}
+fetch dt.entity.os_service
+| fields entity.name, status, alerting, startup_type
+| limit 20
 
 
-// Check 2: Do any SERVICE entities exist running on your MongoDB hosts at all?
-fetch dt.entity.host
-| filter in(entity.name, array("<one of your mongo host names>"))
-| fieldsAdd services = runs[dt.entity.service]
-| fields entity.name, services
+fetch dt.entity.process_group_instance
+| fields entity.name, runs_on
+| limit 5
