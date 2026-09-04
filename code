@@ -3,6 +3,6 @@ fetch dt.entity.host
 | filter toString(tags) == "MongoDB_Supported"
 | fieldsAdd host_id = id, host_name = entity.name
 | lookup [
-    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-2h
+    timeseries cpu = avg(dt.host.cpu.usage, scalar:true), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"m_"
-| fields host_name, cpu = m_cpu
+| fields host_name, cpu_usage_pct = round(m_cpu, decimals:2)
