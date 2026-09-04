@@ -3,6 +3,6 @@ fetch dt.entity.host
 | filter toString(tags) == "MongoDB_Supported"
 | fieldsAdd host_id = id, host_name = entity.name
 | lookup [
-    timeseries mem = avg(dt.host.memory.usage, scalar:true), by:{dt.entity.host}, from:-2h
+    timeseries mem_used = avg(dt.host.memory.used, scalar:true), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"m_"
-| fields host_name, memory_utilization_pct = round(m_mem, decimals:2)
+| fields host_name, memory_used_gb = round(m_mem_used / 1024 / 1024 / 1024, decimals:2)
