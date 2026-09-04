@@ -1,13 +1,16 @@
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries curr_conn = avg(mongodb.current_connections, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"c_"
-| fields process_name, current_connections = round(c_curr_conn, decimals:0)
+    timeseries active_clients = avg(mongodb.active_clients), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields process_name, active_clients = m_active_clients, timeframe, interval
+
 
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries avail_conn = avg(mongodb.available_connections, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"a_"
-| fields process_name, available_connections = round(a_avail_conn, decimals:0)
+    timeseries current_connections = avg(mongodb.current_connections), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields process_name, current_connections = m_current_connections, timeframe, interval
