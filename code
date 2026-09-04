@@ -1,2 +1,2 @@
-fetch dt.entity.mongodb:replicaset
-| summarize total_replica_sets = count()
+fetch dt.entity.mongodb:database
+| summarize total_databases = count()
