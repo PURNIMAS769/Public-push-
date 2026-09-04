@@ -21,13 +21,13 @@ fetch dt.entity.host
                               affected_entity_ids, else:null)
 
     // (b) problem on an OS service running on host → condition 4
-    | lookup [ fetch `dt.entity.os_service`
-              | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
+    | lookup [ fetch `dt.entity.os:service`
+              | fieldsAdd hh = runs_on[dt.entity.host] | fields id, hh ],
       sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
 
     // (c) problem on a process instance running on host → condition 3
     | lookup [ fetch dt.entity.process_group_instance
-              | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
+              | fieldsAdd hh = runs_on[dt.entity.host] | fields id, hh ],
       sourceField:affected_entity_ids, lookupField:id, prefix:"pgi_"
 
     | fieldsAdd resolved_host = coalesce(h_direct, svc_hh, pgi_hh)
@@ -38,5 +38,9 @@ fetch dt.entity.host
 // — Verdict: red if host is down OR has ANY open PID (host, process, or service) —
 | fieldsAdd open_pids = coalesce(p_open_pids, 0)
 | fieldsAdd health_status = if(avail_is_down == true or open_pids > 0, "UNHEALTHY", else:"HEALTHY")
-| fields host_name, open_pids, avail_is_down, health_status, id
-| sort health_status desc
+
+// — Roll up into totals for this tile —
+| summarize
+    total_hosts = count(),
+    healthy = countIf(health_status == "HEALTHY"),
+    unhealthy = countIf(health_status == "UNHEALTHY")
