@@ -1,8 +1,42 @@
-fetch dt.entity.os_service
-| fields entity.name, status, alerting, startup_type
-| limit 20
+// — Universe: MongoDB hosts (tag + running host entities) —
+fetch dt.entity.host
+| filter state == "RUNNING"
+| expand tags | filter toString(tags) == "MongoDB_Supported"
+| summarize count(), by:{ id, host_name = entity.name }
 
+// — Condition 1: raw host availability, independent of any Davis problem —
+| lookup [
+    timeseries host_avail = avg(dt.host.availability), by:{dt.entity.host}, from:-15m
+    | fieldsAdd is_down = if(arrayLast(host_avail) < 1, true, else:false)
+  ], sourceField:id, lookupField:dt.entity.host, prefix:"avail_"
 
-fetch dt.entity.process_group_instance
-| fields entity.name, runs_on
-| limit 5
+// — Signal: ANY active Davis PID affecting the host OR anything running on it —
+| lookup [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | expand affected_entity_ids
+
+    // (a) problem directly on the host → condition 2
+    | fieldsAdd h_direct = if(matchesPhrase(affected_entity_ids, "HOST-"),
+                              affected_entity_ids, else:null)
+
+    // (b) problem on an OS service running on host → condition 4
+    | lookup [ fetch `dt.entity.os_service`
+              | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
+      sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
+
+    // (c) problem on a process instance running on host → condition 3
+    | lookup [ fetch dt.entity.process_group_instance
+              | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
+      sourceField:affected_entity_ids, lookupField:id, prefix:"pgi_"
+
+    | fieldsAdd resolved_host = coalesce(h_direct, svc_hh, pgi_hh)
+    | filter isNotNull(resolved_host)
+    | summarize open_pids = countDistinct(event.id), by:{ resolved_host }
+  ], sourceField:id, lookupField:resolved_host, prefix:"p_"
+
+// — Verdict: red if host is down OR has ANY open PID (host, process, or service) —
+| fieldsAdd open_pids = coalesce(p_open_pids, 0)
+| fieldsAdd health_status = if(avail_is_down == true or open_pids > 0, "UNHEALTHY", else:"HEALTHY")
+| fields host_name, open_pids, avail_is_down, health_status, id
+| sort health_status desc
