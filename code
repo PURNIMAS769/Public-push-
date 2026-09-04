@@ -1,2 +1,21 @@
-timeseries series = sum(mongodb.db.objects), by:{`dt.entity.mongodb:database`}
-| summarize total_databases = count()
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| expand affected_entity_ids
+| expand affected_entity_types
+
+// Scope to MongoDB-related entities only
+| lookup [ fetch `dt.entity.mongodb:process` | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
+| lookup [ fetch dt.entity.mongodb:database | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"db_"
+| lookup [ fetch dt.entity.mongodb:replicaset | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"rs_"
+| lookup [ fetch dt.entity.host | expand tags | filter toString(tags)=="MongoDB_Supported" | fields id ],
+    sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
+
+| filter isNotNull(proc_id) or isNotNull(db_id) or isNotNull(rs_id) or isNotNull(host_id)
+
+| fieldsAdd entity_kind = if(isNotNull(host_id), "Host",
+                          else: if(isNotNull(proc_id), "Process",
+                          else: if(isNotNull(db_id), "Database",
+                          else: if(isNotNull(rs_id), "Replica Set", else: "Other"))))
+
+| summarize problem_count = countDistinct(event.id), by:{ event.category, entity_kind }
+| sort problem_count desc
