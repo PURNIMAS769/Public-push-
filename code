@@ -20,5 +20,9 @@ fetch `dt.entity.mongodb:process`, from:-24h
     is_running == false or m_latest_reported == 0 or open_pids > 0,
     "UNHEALTHY", else: "HEALTHY"
   )
-| fields process_name, open_pids, health_status, id
-| sort health_status desc
+
+// — Roll up into totals for this tile —
+| summarize
+    total_processes = count(),
+    healthy = countIf(health_status == "HEALTHY"),
+    unhealthy = countIf(health_status == "UNHEALTHY")
