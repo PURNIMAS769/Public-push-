@@ -5,7 +5,8 @@ fetch dt.entity.host
 | lookup [
     timeseries read_iops = avg(dt.host.disk.read_ops), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"m_"
-| fields host_name, read_iops = m_read_iops
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields host_name, read_iops = m_read_iops, timeframe, interval
 
 
 
@@ -16,7 +17,8 @@ fetch dt.entity.host
 | lookup [
     timeseries write_iops = avg(dt.host.disk.write_ops), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"m_"
-| fields host_name, write_iops = m_write_iops
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields host_name, write_iops = m_write_iops, timeframe, interval
 
 
 fetch dt.entity.host
@@ -29,4 +31,5 @@ fetch dt.entity.host
 | lookup [
     timeseries write_ms = avg(dt.host.disk.write_time), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"w_"
-| fields host_name, read_latency_ms = r_read_ms, write_latency_ms = w_write_ms
+| fieldsAdd interval = r_interval, timeframe = r_timeframe
+| fields host_name, read_latency_ms = r_read_ms, write_latency_ms = w_write_ms, timeframe, interval
