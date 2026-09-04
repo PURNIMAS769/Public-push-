@@ -1,25 +1,8 @@
-fetch dt.entity.host, from:-30d
-| filter matchesPhrase(tags, "MongoDB_Supported")
-| fieldsAdd pgi = runs[dt.entity.process_group_instance]
-| fieldsAdd all_ids = arrayConcat(array(id), pgi)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| join [
-    fetch dt.davis.events, from:-30d
-    | filter in(event.type, {"DEPLOYMENT_CHANGED_CHANGE", "DEPLOYMENT_CHANGED_NEW",
-      "DEPLOYMENT_CHANGED_REMOVED", "METRIC_CHANGEPOINT"})
-    | expand affected_entity_ids
-    | fieldsAdd change_type = event.type,
-      change_name = event.name,
-      change_time = event.start
-    | fieldsKeep affected_entity_ids, change_type, change_name, change_time
-  ], kind:inner, on: left[check_id] == right[affected_entity_ids], prefix:"c."
-| summarize change_count = count(), by:{ day = bin(c.change_time, 1d), c.change_type }
-| fieldsAdd `Change Type` =
-    if(c.change_type == "DEPLOYMENT_CHANGED_CHANGE", "Config/Deployment Changed",
-    else: if(c.change_type == "DEPLOYMENT_CHANGED_NEW", "New Deployment",
-    else: if(c.change_type == "DEPLOYMENT_CHANGED_REMOVED", "Deployment Removed",
-    else: if(c.change_type == "METRIC_CHANGEPOINT", "Metric Shift",
-    else: c.change_type))))
-| fields day, `Change Type`, change_count
-| sort day asc
+fetch dt.entity.host
+| expand tags
+| filter toString(tags) == "MongoDB_Supported"
+| fieldsAdd host_id = id, host_name = entity.name
+| lookup [
+    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-2h
+  ], sourceField:host_id, lookupField:dt.entity.host, prefix:"m_"
+| fields host_name, cpu = m_cpu
