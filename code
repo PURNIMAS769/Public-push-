@@ -3,15 +3,22 @@ fetch `dt.entity.mongodb:process`
 | lookup [
     timeseries uptime_sec = avg(mongodb.uptime, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
   ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"u_"
-| lookup [
-    timeseries curr_conn = avg(mongodb.current_connections, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"c_"
-| lookup [
-    timeseries avail_conn = avg(mongodb.available_connections, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"a_"
+| fields process_name, uptime_days = round(u_uptime_sec / 86400, decimals:1)
 
-| fieldsAdd uptime_days = round(u_uptime_sec / 86400, decimals:1)
-| fields process_name,
-    uptime_days,
-    current_connections = round(c_curr_conn, decimals:0),
-    available_connections = round(a_avail_conn, decimals:0)
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries curr_conn = avg(mongodb.current_connections), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"c_"
+| fieldsAdd interval = c_interval, timeframe = c_timeframe
+| fields process_name, current_connections = c_curr_conn, timeframe, interval
+
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries avail_conn = avg(mongodb.available_connections), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"a_"
+| fieldsAdd interval = a_interval, timeframe = a_timeframe
+| fields process_name, available_connections = a_avail_conn, timeframe, interval
