@@ -1,27 +1,25 @@
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate)
-| expand affected_entity_ids
-
-// — Scope to MongoDB-related entities (same validated pattern as Tile 9 / Active Alert Analysis) —
-| lookup [ fetch `dt.entity.mongodb:process` | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
-| lookup [ fetch dt.entity.mongodb:database | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"db_"
-| lookup [ fetch dt.entity.mongodb:replicaset | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"rs_"
-| lookup [ fetch dt.entity.host | expand tags | filter toString(tags)=="MongoDB_Supported" | fields id ],
-    sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
-| lookup [ fetch `dt.entity.os:service`
-          | fieldsAdd h = runs_on[dt.entity.host]
-          | lookup [ fetch dt.entity.host | expand tags | filter toString(tags)=="MongoDB_Supported" | fields id ],
-              sourceField:h, lookupField:id, prefix:"hh_"
-          | filter isNotNull(hh_id)
-          | fields id ],
-    sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
-
-| fieldsAdd entity_kind = if(isNotNull(host_id), "Host",
-                          else: if(isNotNull(svc_id), "Service",
-                          else: if(isNotNull(proc_id), "Process",
-                          else: if(isNotNull(db_id), "Database",
-                          else: if(isNotNull(rs_id), "Replica Set", else: null)))))
-
-| filter isNotNull(entity_kind)
-
-| makeTimeseries alerts = countDistinct(event.id), by:{entity_kind}
+fetch dt.entity.host, from:-30d
+| filter matchesPhrase(tags, "MongoDB_Supported")
+| fieldsAdd pgi = runs[dt.entity.process_group_instance]
+| fieldsAdd all_ids = arrayConcat(array(id), pgi)
+| fieldsKeep all_ids
+| expand check_id = all_ids
+| join [
+    fetch dt.davis.events, from:-30d
+    | filter in(event.type, {"DEPLOYMENT_CHANGED_CHANGE", "DEPLOYMENT_CHANGED_NEW",
+      "DEPLOYMENT_CHANGED_REMOVED", "METRIC_CHANGEPOINT"})
+    | expand affected_entity_ids
+    | fieldsAdd change_type = event.type,
+      change_name = event.name,
+      change_time = event.start
+    | fieldsKeep affected_entity_ids, change_type, change_name, change_time
+  ], kind:inner, on: left[check_id] == right[affected_entity_ids], prefix:"c."
+| summarize change_count = count(), by:{ day = bin(c.change_time, 1d), c.change_type }
+| fieldsAdd `Change Type` =
+    if(c.change_type == "DEPLOYMENT_CHANGED_CHANGE", "Config/Deployment Changed",
+    else: if(c.change_type == "DEPLOYMENT_CHANGED_NEW", "New Deployment",
+    else: if(c.change_type == "DEPLOYMENT_CHANGED_REMOVED", "Deployment Removed",
+    else: if(c.change_type == "METRIC_CHANGEPOINT", "Metric Shift",
+    else: c.change_type))))
+| fields day, `Change Type`, change_count
+| sort day asc
