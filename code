@@ -1,16 +1,17 @@
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries active_clients = avg(mongodb.active_clients), by:{`dt.entity.mongodb:process`}, from:-2h
+    timeseries {
+      insert_ops  = avg(mongodb.insert_operations2.count),
+      query_ops   = avg(mongodb.query_operations2.count),
+      update_ops  = avg(mongodb.update_operations2.count),
+      delete_ops  = avg(mongodb.delete_operations2.count),
+      getmore_ops = avg(mongodb.getmore_operations2.count),
+      command_ops = avg(mongodb.command_operations2.count)
+    }, by:{`dt.entity.mongodb:process`}, from:-2h
   ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
 | fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, active_clients = m_active_clients, timeframe, interval
-
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries current_connections = avg(mongodb.current_connections), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, current_connections = m_current_connections, timeframe, interval
+| fields process_name,
+    insert_ops = m_insert_ops, query_ops = m_query_ops, update_ops = m_update_ops,
+    delete_ops = m_delete_ops, getmore_ops = m_getmore_ops, command_ops = m_command_ops,
+    timeframe, interval
