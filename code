@@ -1,8 +1,14 @@
 fetch dt.entity.mongodb:database
+| filter not(contains(entity.name, "mmsdbrrd")) and not(contains(entity.name, "autoindexing"))
+        and not(contains(entity.name, "backupalerts")) and not(contains(entity.name, "mongodbaccesslogs"))
+| summarize total_databases = count()
+
+
+fetch dt.entity.mongodb:database
 | fieldsAdd id
 | lookup [
     timeseries has_data = sum(mongodb.db.objects), by:{`dt.entity.mongodb:database`}, from:-2h
     | fieldsAdd reported = if(isNotNull(arraySum(has_data)) and arraySum(has_data) > 0, true, else:false)
   ], sourceField:id, lookupField:`dt.entity.mongodb:database`, prefix:"m_"
-| filter m_reported == false or isNull(m_reported)
-| fields entity.name, id
+| filter m_reported == true
+| summarize total_databases = count()
