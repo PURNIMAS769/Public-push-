@@ -3,9 +3,9 @@ fetch dt.entity.host
 | filter toString(tags) == "MongoDB_Supported"
 | fieldsAdd host_id = id, host_name = entity.name
 | lookup [
-    timeseries read_iops = avg(dt.host.disk.read_ops, scalar:true), by:{dt.entity.host}, from:-2h
+    timeseries read_iops = avg(dt.host.disk.read_ops), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"m_"
-| fields host_name, read_iops = round(m_read_iops, decimals:2)
+| fields host_name, read_iops = m_read_iops
 
 
 
@@ -14,9 +14,9 @@ fetch dt.entity.host
 | filter toString(tags) == "MongoDB_Supported"
 | fieldsAdd host_id = id, host_name = entity.name
 | lookup [
-    timeseries write_iops = avg(dt.host.disk.write_ops, scalar:true), by:{dt.entity.host}, from:-2h
+    timeseries write_iops = avg(dt.host.disk.write_ops), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"m_"
-| fields host_name, write_iops = round(m_write_iops, decimals:2)
+| fields host_name, write_iops = m_write_iops
 
 
 fetch dt.entity.host
@@ -24,9 +24,9 @@ fetch dt.entity.host
 | filter toString(tags) == "MongoDB_Supported"
 | fieldsAdd host_id = id, host_name = entity.name
 | lookup [
-    timeseries read_ms = avg(dt.host.disk.read_time, scalar:true), by:{dt.entity.host}, from:-2h
+    timeseries read_ms = avg(dt.host.disk.read_time), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"r_"
 | lookup [
-    timeseries write_ms = avg(dt.host.disk.write_time, scalar:true), by:{dt.entity.host}, from:-2h
+    timeseries write_ms = avg(dt.host.disk.write_time), by:{dt.entity.host}, from:-2h
   ], sourceField:host_id, lookupField:dt.entity.host, prefix:"w_"
-| fields host_name, read_latency_ms = round(r_read_ms, decimals:2), write_latency_ms = round(w_write_ms, decimals:2)
+| fields host_name, read_latency_ms = r_read_ms, write_latency_ms = w_write_ms
