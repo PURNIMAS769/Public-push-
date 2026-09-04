@@ -1,46 +1,24 @@
-// — Universe: MongoDB hosts (tag + running host entities) —
-fetch dt.entity.host
-| filter state == "RUNNING"
-| expand tags | filter toString(tags) == "MongoDB_Supported"
-| summarize count(), by:{ id, host_name = entity.name }
+fetch `dt.entity.mongodb:process`, from:-24h
+| fieldsAdd process_name = entity.name, is_running = if(lifetime[end] > now() - 15m, true, else: false)
 
-// — Condition 1: raw host availability, independent of any Davis problem —
+// — Liveness: heartbeat via mongodb.uptime —
 | lookup [
-    timeseries host_avail = avg(dt.host.availability), by:{dt.entity.host}, from:-15m
-    | fieldsAdd is_down = if(arrayLast(host_avail) < 1, true, else:false)
-  ], sourceField:id, lookupField:dt.entity.host, prefix:"avail_"
+    timeseries latest = avg(mongodb.uptime), by:{`dt.entity.mongodb:process`}, from:-15m
+    | fieldsAdd latest_reported = if(isNotNull(arrayLast(latest)), 1, else: 0)
+  ], sourceField:id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
 
-// — Signal: ANY active Davis PID affecting the host OR anything running on it —
+// — Any active Davis problem directly on this process entity —
 | lookup [
     fetch dt.davis.problems
     | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
     | expand affected_entity_ids
+    | summarize open_pids = countDistinct(event.id), by:{affected_entity_ids}
+  ], sourceField:id, lookupField:affected_entity_ids, prefix:"p_"
 
-    // (a) problem directly on the host → condition 2
-    | fieldsAdd h_direct = if(matchesPhrase(affected_entity_ids, "HOST-"),
-                              affected_entity_ids, else:null)
-
-    // (b) problem on an OS service running on host → condition 4
-    | lookup [ fetch `dt.entity.os:service`
-              | fieldsAdd hh = runs_on[dt.entity.host] | fields id, hh ],
-      sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
-
-    // (c) problem on a process instance running on host → condition 3
-    | lookup [ fetch dt.entity.process_group_instance
-              | fieldsAdd hh = runs_on[dt.entity.host] | fields id, hh ],
-      sourceField:affected_entity_ids, lookupField:id, prefix:"pgi_"
-
-    | fieldsAdd resolved_host = coalesce(h_direct, svc_hh, pgi_hh)
-    | filter isNotNull(resolved_host)
-    | summarize open_pids = countDistinct(event.id), by:{ resolved_host }
-  ], sourceField:id, lookupField:resolved_host, prefix:"p_"
-
-// — Verdict: red if host is down OR has ANY open PID (host, process, or service) —
 | fieldsAdd open_pids = coalesce(p_open_pids, 0)
-| fieldsAdd health_status = if(avail_is_down == true or open_pids > 0, "UNHEALTHY", else:"HEALTHY")
-
-// — Roll up into totals for this tile —
-| summarize
-    total_hosts = count(),
-    healthy = countIf(health_status == "HEALTHY"),
-    unhealthy = countIf(health_status == "UNHEALTHY")
+| fieldsAdd health_status = if(
+    is_running == false or m_latest_reported == 0 or open_pids > 0,
+    "UNHEALTHY", else: "HEALTHY"
+  )
+| fields process_name, open_pids, health_status, id
+| sort health_status desc
