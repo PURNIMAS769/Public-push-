@@ -1,36 +1,11 @@
-// ── Universe: 547 (exact MSSQL tag + running host entities) ──
+// Check 1: Does dt.host.availability.state exist and what values does it report for your MongoDB hosts?
+fetch metric.series
+| filter contains(metric.key, "availability")
+| summarize count(), by:{metric.key}
+
+
+// Check 2: Do any SERVICE entities exist running on your MongoDB hosts at all?
 fetch dt.entity.host
-| filter state == "RUNNING"
-| expand tags | filter toString(tags) == "MSSQL"
-| summarize by:{ id, host_name = entity.name }
-
-// ── Signal: ANY active Davis PID affecting the host OR anything running on it ──
-| lookup [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | expand affected_entity_ids
-
-    // (a) problem directly on the host  → rules 1 & 2
-    | fieldsAdd h_direct = if(matchesPhrase(affected_entity_ids, "HOST-"),
-                              affected_entity_ids, else:null)
-
-    // (b) problem on an OS service / SQL-Agent custom device → runs_on host  → rule 4
-    | lookup [ fetch `dt.entity.os:service`
-               | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
-        sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
-
-    // (c) problem on a process instance → runs_on host  → rule 3
-    | lookup [ fetch dt.entity.process_group_instance
-               | fieldsAdd hh = runs_on[dt.entity.host] | expand hh | fields id, hh ],
-        sourceField:affected_entity_ids, lookupField:id, prefix:"pgi_"
-
-    | fieldsAdd resolved_host = coalesce(h_direct, svc_hh, pgi_hh)
-    | filter isNotNull(resolved_host)
-    | summarize open_pids = countDistinct(event.id), by:{ resolved_host }
-  ], sourceField:id, lookupField:resolved_host, prefix:"p_"
-
-// ── Verdict: red if the host has ANY open PID (host, process, or service) ──
-| fieldsAdd open_pids = coalesce(p_open_pids, 0)
-| fieldsAdd health_status = if(open_pids > 0, "UNHEALTHY", else:"HEALTHY")
-| fields host_name, open_pids, health_status, id
-| sort health_status desc, host_name asc
+| filter in(entity.name, array("<one of your mongo host names>"))
+| fieldsAdd services = runs[dt.entity.service]
+| fields entity.name, services
