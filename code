@@ -9,13 +9,21 @@ fetch dt.davis.problems
 | lookup [ fetch dt.entity.mongodb:replicaset | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"rs_"
 | lookup [ fetch dt.entity.host | expand tags | filter toString(tags)=="MongoDB_Supported" | fields id ],
     sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
+| lookup [ fetch `dt.entity.os:service`
+          | fieldsAdd h = runs_on[dt.entity.host]
+          | lookup [ fetch dt.entity.host | expand tags | filter toString(tags)=="MongoDB_Supported" | fields id ],
+              sourceField:h, lookupField:id, prefix:"hh_"
+          | filter isNotNull(hh_id)
+          | fields id ],
+    sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
 
-| filter isNotNull(proc_id) or isNotNull(db_id) or isNotNull(rs_id) or isNotNull(host_id)
+| filter isNotNull(proc_id) or isNotNull(db_id) or isNotNull(rs_id) or isNotNull(host_id) or isNotNull(svc_id)
 
 | fieldsAdd entity_kind = if(isNotNull(host_id), "Host",
+                          else: if(isNotNull(svc_id), "Service",
                           else: if(isNotNull(proc_id), "Process",
                           else: if(isNotNull(db_id), "Database",
-                          else: if(isNotNull(rs_id), "Replica Set", else: "Other"))))
+                          else: if(isNotNull(rs_id), "Replica Set", else: "Other")))))
 
 | summarize problem_count = countDistinct(event.id), by:{ event.category, entity_kind }
 | sort problem_count desc
