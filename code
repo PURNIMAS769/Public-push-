@@ -1,24 +1,17 @@
-fetch dt.entity.host
-| expand tags
-| filter toString(tags) == "MongoDB_Supported"
-| fieldsAdd host_id = id, host_name = entity.name
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries read_ms = avg(dt.host.disk.read_time), by:{dt.entity.host}, from:-2h
-  ], sourceField:host_id, lookupField:dt.entity.host, prefix:"r_"
+    timeseries uptime_sec = avg(mongodb.uptime, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"u_"
 | lookup [
-    timeseries write_ms = avg(dt.host.disk.write_time), by:{dt.entity.host}, from:-2h
-  ], sourceField:host_id, lookupField:dt.entity.host, prefix:"w_"
-| fields host_name, read_latency_ms = r_read_ms, write_latency_ms = w_write_ms
+    timeseries curr_conn = avg(mongodb.current_connections, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"c_"
+| lookup [
+    timeseries avail_conn = avg(mongodb.available_connections, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"a_"
 
-
-fetch dt.entity.host
-| expand tags
-| filter toString(tags) == "MongoDB_Supported"
-| fieldsAdd host_id = id, host_name = entity.name
-| lookup [
-    timeseries read_ms = avg(dt.host.disk.read_time, scalar:true), by:{dt.entity.host}, from:-2h
-  ], sourceField:host_id, lookupField:dt.entity.host, prefix:"r_"
-| lookup [
-    timeseries write_ms = avg(dt.host.disk.write_time, scalar:true), by:{dt.entity.host}, from:-2h
-  ], sourceField:host_id, lookupField:dt.entity.host, prefix:"w_"
-| fields host_name, read_latency_ms = round(r_read_ms, decimals:2), write_latency_ms = round(w_write_ms, decimals:2)
+| fieldsAdd uptime_days = round(u_uptime_sec / 86400, decimals:1)
+| fields process_name,
+    uptime_days,
+    current_connections = round(c_curr_conn, decimals:0),
+    available_connections = round(a_avail_conn, decimals:0)
