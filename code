@@ -1,9 +1,8 @@
-fetch dt.davis.problems
+fetch dt.davis.problems, from:-24h
 | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
 | expand affected_entity_ids
-| expand affected_entity_types
 
-// Scope to MongoDB-related entities only
+// — Scope to MongoDB-related entities (same validated pattern as Tile 9) —
 | lookup [ fetch `dt.entity.mongodb:process` | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
 | lookup [ fetch dt.entity.mongodb:database | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"db_"
 | lookup [ fetch dt.entity.mongodb:replicaset | fields id ], sourceField:affected_entity_ids, lookupField:id, prefix:"rs_"
@@ -16,14 +15,31 @@ fetch dt.davis.problems
           | filter isNotNull(hh_id)
           | fields id ],
     sourceField:affected_entity_ids, lookupField:id, prefix:"svc_"
+| fieldsAdd is_mongo = if(isNotNull(proc_id) or isNotNull(db_id) or isNotNull(rs_id) or isNotNull(host_id) or isNotNull(svc_id), 1, else:0)
 
-| filter isNotNull(proc_id) or isNotNull(db_id) or isNotNull(rs_id) or isNotNull(host_id) or isNotNull(svc_id)
+| summarize
+    problem_title   = takeFirst(event.name),
+    severity        = takeFirst(event.category),
+    status          = takeFirst(event.status),
+    root_cause      = takeFirst(root_cause_entity_name),
+    affected_types  = takeFirst(affected_entity_types),
+    start_time      = takeFirst(event.start),
+    problem_event_id= takeFirst(event.id),
+    is_mongo_related= max(is_mongo),
+  by:{display_id}
 
-| fieldsAdd entity_kind = if(isNotNull(host_id), "Host",
-                          else: if(isNotNull(svc_id), "Service",
-                          else: if(isNotNull(proc_id), "Process",
-                          else: if(isNotNull(db_id), "Database",
-                          else: if(isNotNull(rs_id), "Replica Set", else: "Other")))))
+| filter is_mongo_related == 1
 
-| summarize problem_count = countDistinct(event.id), by:{ event.category, entity_kind }
-| sort problem_count desc
+// — Age in Day/Hour/Min format (your requested modification) —
+| fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
+| fieldsAdd days = floor(total_seconds / 86400),
+            hrs  = floor((total_seconds % 86400) / 3600),
+            mins = floor((total_seconds % 3600) / 60)
+| fieldsAdd age_formatted = concat(toString(days), "d ", toString(hrs), "h ", toString(mins), "m")
+
+| fieldsAdd problem_link = concat(
+    "https://<your-tenant-id>.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
+    problem_event_id, "?from=now()-24h&to=now()")
+
+| sort start_time desc
+| fields display_id, problem_title, severity, status, root_cause, affected_types, start_time, age_formatted, problem_link
