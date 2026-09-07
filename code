@@ -1,17 +1,13 @@
-Corrected version — adapted for SCCM (no $Host dependency, explicit tag scope)
+Final CPU Usage — Forecast Source Query (SCCM hosts only)
 timeseries cpu_usage = avg(dt.host.cpu.usage),
            avg_usage = avg(dt.host.cpu.usage, scalar:true),
   by:{dt.entity.host},
-  filter: in(entityAttr(dt.entity.host, "osType"), array("WINDOWS"))
-    and dt.entity.host in [
-      fetch dt.entity.host
-      | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-      | fields id
-    ],
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ],
   from:-15d, interval:1h
 | fieldsAdd host.name = entityName(dt.entity.host)
 | sort avg_usage desc
 | limit 20
-
-What changed
-Removed the {
