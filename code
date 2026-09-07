@@ -4,11 +4,17 @@ fetch dt.entity.process_group_instance
 | fields id, pgi_name = entity.name
 
 | join [
-    timeseries avail = avg(dt.process.availability), by:{dt.entity.process_group_instance}
+    timeseries avail = avg(dt.process.availability), by:{dt.entity.process_group_instance},
+      filter: dt.entity.process_group_instance in [
+        fetch dt.entity.process_group_instance
+        | filter contains(entity.name, "WsusService.exe")
+        | fields id
+      ]
   ], kind:leftOuter, on: left[id] == right[dt.entity.process_group_instance]
 | fieldsAdd avail_pct = arrayLast(right.avail) * 100
 | fields pgi_name, avail_pct
 | sort avail_pct asc
+
 
 
 fetch dt.davis.problems
