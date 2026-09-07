@@ -1,15 +1,16 @@
-Diagnostic Query — see the join output before filtering
 timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
   by:{`dt.entity.sql:sql_server_instance`}
 
 | lookup [
     fetch `dt.entity.sql:sql_server_instance`
     | fieldsAdd h = runs_on[dt.entity.host]
-    | fields id, h
+    | fieldsAdd host_name = entityName(h)
+    | fields id, host_name
   ], sourceField:`dt.entity.sql:sql_server_instance`, lookupField:id, prefix:"inst_"
 
 | fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| fieldsAdd host_name = entityName(inst_h)
-| fields instance_name, host_name, blocked
+| fields instance_name, inst_host_name, blocked
 | sort blocked desc
 | limit 30
+
+What ch
