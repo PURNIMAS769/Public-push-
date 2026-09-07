@@ -1,14 +1,3 @@
-Final Query — Native unit, no manual conversion
-timeseries traffic_in  = avg(dt.host.net.nic.bytes_rx, scalar:true),
-           traffic_out = avg(dt.host.net.nic.bytes_tx, scalar:true),
-  by:{dt.entity.host, dt.entity.network_interface},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| summarize traffic_in = sum(traffic_in), traffic_out = sum(traffic_out), by:{dt.entity.host}
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd traffic_total = traffic_in + traffic_out
-| sort traffic_total desc
-| fields hostname, traffic_total, traffic_in, traffic_out
+fetch metric.series | filter contains(metric.key, "dns") 
+| summarize count(), by:{metric.key} 
+| sort metric.key asc
