@@ -1,13 +1,7 @@
-Discovery — what change/info events exist for SCCM hosts + processes (last 30d)
+processes
 fetch dt.davis.events, from:-30d
-| filter event.category == "INFO"
+| filter event.type == "PROCESS_RESTART"
 | expand affected_entity_ids
-
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
 
 | lookup [
     fetch dt.entity.process_group_instance
@@ -18,13 +12,10 @@ fetch dt.davis.events, from:-30d
         | fields id
       ], sourceField:h, lookupField:id, prefix:"hh_"
     | filter isNotNull(hh_id)
-    | fields id
+    | fields id, pgi_name = entity.name
   ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
 
-| filter isNotNull(host_id) or isNotNull(proc_id)
-| fields event.name, event.type, event.category, event.start
+| filter isNotNull(proc_id)
+| fields event.name, proc_pgi_name, event.start
 | sort event.start desc
 | limit 30
-
-
-What to check: This s
