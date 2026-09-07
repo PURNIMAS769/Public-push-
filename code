@@ -1,17 +1,29 @@
-fetch `dt.entity.os:service` 
-| filter contains(entity.name, "WDSServer") 
-| fields id, svc_name = entity.name
+Combined Tile — WDSServer Service Availability + Davis Alert Overlay
+timeseries total = count(dt.osservice.availability),
+           running = count(dt.osservice.availability, filter: in(dt.osservice.status, array("running","active"))),
+  by:{dt.entity.host},
+  filter: dt.osservice.name == "WDSServer"
 
+| fieldsAdd total_sum = arraySum(total), running_sum = arraySum(running)
+| fieldsAdd avail_pct = (running_sum / total_sum) * 100
 
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| expand affected_entity_ids
 | join [
-    fetch `dt.entity.os:service`
-    | filter contains(entity.name, "WDSServer")
-    | fields id, svc_name = entity.name
-  ], kind:inner, on: left[affected_entity_ids] == right[id]
-| fields display_id, affected_entity_ids, right.svc_name, event.start
-| sort event.start desc
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id, hostname = entity.name
+  ], kind:leftOuter, on: left[dt.entity.host] == right[id]
+| fieldsAdd hostname = right.hostname
+
+| join [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | expand affected_entity_ids
+    | summarize open_problems = collectDistinct(display_id), by:{affected_entity_ids}
+  ], kind:leftOuter, on: left[dt.entity.host] == right[affected_entity_ids]
+| fieldsAdd open_problems = right.open_problems
+
+| fieldsAdd health_status = if(isNull(open_problems) and avail_pct >= 99, "HEALTHY", else:"UNHEALTHY")
+| fields hostname, avail_pct, open_problems, health_status
+| sort health_status desc
 
 
