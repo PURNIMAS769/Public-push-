@@ -1,5 +1,5 @@
-Corrected Disk Utilization — Forecast-compatible query
-timeseries disk_usage = avg(dt.host.disk.used_percent),
+Disk Utilization — Forecast-compatible (based on your validated working query)
+timeseries used_pct = avg(dt.host.disk.used.percent),
   by:{dt.entity.host, dt.entity.disk},
   filter: dt.entity.host in [
     fetch dt.entity.host
