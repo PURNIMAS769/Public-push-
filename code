@@ -1,17 +1,20 @@
-1️⃣ NIC Retransmission (overall)
-builtin:host.net.nic.retransmission
-:filter(and(or(in("dt.entity.host",entitySelector("type(host)",tag(~"APMID:APP00005497~")))))
-:splitBy("dt.entity.host","dt.entity.network_interface")
-:sort(value(auto,descending))
+Discovery Query — NetTracer Retransmission % for SCCM hosts
+timeseries retr_pct = avg(dt.process.nettracer.retr.percent, scalar:true),
+  by:{dt.entity.process_group_instance},
+  filter: dt.entity.process_group_instance in [
+    fetch dt.entity.process_group_instance
+    | fieldsAdd h = runs_on[dt.entity.host]
+    | lookup [
+        fetch dt.entity.host
+        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+        | fields id
+      ], sourceField:h, lookupField:id, prefix:"hh_"
+    | filter isNotNull(hh_id)
+    | fields id
+  ]
+| fieldsAdd pgi_name = entityName(dt.entity.process_group_instance)
+| fields pgi_name, retr_pct
+| sort retr_pct desc
+| limit 30
 
-2️⃣ NIC Retransmission In (received packets retransmission)
-builtin:host.net.nic.retransmissionIn
-:filter(and(or(in("dt.entity.host",entitySelector("type(host)",tag(~"APMID:APP00005497~"))))))
-:splitBy("dt.entity.host")
-:sort(value(auto,descending))
-
-3️⃣ NIC Retransmission Out (sent packets retransmission)
-builtin:host.net.nic.retransmission
-:filter(and(or(in("dt.entity.host",entitySelector("type(host)",tag(~"APMID:APP00005497~"))))))
-:parents:splitBy("dt.entity.host")
-:sort(value(auto,descending))
+What to check
