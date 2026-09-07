@@ -1,7 +1,6 @@
-
-Fixed query — lookup runs_on via a separate fetch
+Diagnostic Query — see the join output before filtering
 timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
-  by:{dt.entity.sql:sql_server_instance}
+  by:{`dt.entity.sql:sql_server_instance`}
 
 | lookup [
     fetch `dt.entity.sql:sql_server_instance`
@@ -9,21 +8,8 @@ timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
     | fields id, h
   ], sourceField:`dt.entity.sql:sql_server_instance`, lookupField:id, prefix:"inst_"
 
-| lookup [
-    fetch dt.entity.host
-    | filter in(lower(entity.name), array(
-        "pftwswifscq03.prd.hcscad.net",
-        "pwauswifsq0101.prd.hcscad.net",
-        "pwauswifscq03.prd.hcscad.net",
-        "pwauswifsq0102.prd.hcscad.net",
-        "pwauswifscq04.prd.hcscad.net"
-      ))
-    | fields id
-  ], sourceField:inst_h, lookupField:id, prefix:"hh_"
-
-| filter isNotNull(hh_id)
 | fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| fields instance_name, blocked
+| fieldsAdd host_name = entityName(inst_h)
+| fields instance_name, host_name, blocked
 | sort blocked desc
-
-What changed
+| limit 30
