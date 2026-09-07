@@ -1,57 +1,28 @@
-Tile 1: Insert Operations/sec
+Resident Memory (MB)
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries insert_ops = avg(mongodb.insert_operations2.count), by:{`dt.entity.mongodb:process`}, from:-2h
+    timeseries resident_mem = avg(mongodb.resident_memory), by:{`dt.entity.mongodb:process`}, from:-2h
   ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
 | fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, insert_ops = m_insert_ops, timeframe, interval
+| fields process_name, resident_memory_mb = m_resident_mem, timeframe, interval
 
-Tile 2: Query Operations/sec
+
+Virtual Memory (MB)
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries query_ops = avg(mongodb.query_operations2.count), by:{`dt.entity.mongodb:process`}, from:-2h
+    timeseries virtual_mem = avg(mongodb.virtual_memory), by:{`dt.entity.mongodb:process`}, from:-2h
   ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
 | fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, query_ops = m_query_ops, timeframe, interval
+| fields process_name, virtual_memory_mb = m_virtual_mem, timeframe, interval
 
-Tile 3: Update Operations/sec
 
+Page Fault 
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries update_ops = avg(mongodb.update_operations2.count), by:{`dt.entity.mongodb:process`}, from:-2h
+    timeseries page_faults = avg(mongodb.page_faults), by:{`dt.entity.mongodb:process`}, from:-2h
   ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
 | fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, update_ops = m_update_ops, timeframe, interval
-
-
-Tile 4: Delete Operations/sec
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries delete_ops = avg(mongodb.delete_operations2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, delete_ops = m_delete_ops, timeframe, interval
-
-Tile 5: Getmore Operations/sec
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries getmore_ops = avg(mongodb.getmore_operations2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, getmore_ops = m_getmore_ops, timeframe, interval
-Tile 6: Command Operations/sec
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries command_ops = avg(mongodb.command_operations2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, command_ops = m_command_ops, timeframe, interval
-
-
-
+| fields process_name, page_faults = m_page_faults, timeframe, interval
