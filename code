@@ -1,25 +1,11 @@
-Memory:
-
-timeseries mem_usage = avg(dt.host.memory.usage), by:{dt.entity.host},
+Corrected Disk Utilization — Forecast-compatible query
+timeseries disk_usage = avg(dt.host.disk.used_percent),
+  by:{dt.entity.host, dt.entity.disk},
   filter: dt.entity.host in [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
     | fields id
   ],
-  from:-15d, interval:1h
-| fieldsAdd host.name = entityName(dt.entity.host)
-
-
-Disk:
-
-timeseries disk_usage = avg(dt.host.disk.used_percent), by:{dt.entity.host, dt.entity.disk},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ],
-  from:-15d, interval:1h
-| fieldsAdd host.name = entityName(dt.entity.host), disk.name = entityName(dt.entity.disk)
-
-
-Try
+  from:-15d,
+  interval:1h
+| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
