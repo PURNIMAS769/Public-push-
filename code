@@ -1,25 +1,53 @@
-Tile 1 — DNS Query Time (Top List, host rollup)
-timeseries qtime = avg(dt.host.dns.query_time, scalar:true),
+Tile 1 — SQL Server Host CPU Usage (5 named SQL hosts)
+timeseries cpu_pct = avg(dt.host.cpu.usage, scalar:true),
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | filter in(lower(entity.name), array(
+        "pftwswifscq03.prd.hcscad.net",
+        "pwauswifsq0101.prd.hcscad.net",
+        "pwauswifscq03.prd.hcscad.net",
+        "pwauswifsq0102.prd.hcscad.net",
+        "pwauswifscq04.prd.hcscad.net"
+      ))
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
-| sort qtime desc
-| fields hostname, qtime
+| fieldsAdd cpu_pct = round(cpu_pct, decimals:2)
+| fields hostname, cpu_pct
+| sort cpu_pct desc
 
-Tile 2 — Single Query Time by Host (Top List, same metric, per-host granularity)
-timeseries qtime = avg(dt.host.dns.query_time, scalar:true),
+Tile 2 — SQL Server Memory Usage in GB (Total / Used)
+timeseries used_b  = avg(dt.host.memory.used, scalar:true),
+           avail_b = avg(dt.host.memory.avail.bytes, scalar:true),
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | filter in(lower(entity.name), array(
+        "pftwswifscq03.prd.hcscad.net",
+        "pwauswifsq0101.prd.hcscad.net",
+        "pwauswifscq03.prd.hcscad.net",
+        "pwauswifsq0102.prd.hcscad.net",
+        "pwauswifscq04.prd.hcscad.net"
+      ))
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
-| sort qtime desc
-| fields hostname, qtime
+| fieldsAdd total_gib = round((used_b + avail_b) / 1073741824, decimals:1)
+| fieldsAdd used_gib  = round(used_b / 1073741824, decimals:1)
+| fieldsAdd used_pct  = round((used_b / (used_b + avail_b)) * 100, decimals:2)
+| fields hostname, total_gib, used_gib, used_pct
+| sort used_pct desc
 
-Important note
+🔍 Discovery — Blocking Sessions & Long-Running Queries (tenant-specific check needed)
+
+Per your own metric catalog, sql-server.local.general.processesBlocked is the documented "blocked processes" metric ✅, and long-running queries would come from Query Store metrics (sql-server.queries.*) which are only 🟡 documented, not yet confirmed in your tenant . Let's verify both exist and are collecting for your 5 SQL hosts:
+
+fetch metric.series
+| filter contains(metric.key, "sql-server")
+   and (contains(metric.key, "block") or contains(metric.key, "quer") or contains(metric.key, "lock"))
+| summarize count(), by:{metric.key}
+| sort metric.key asc
+
+
+What to check:
