@@ -1,25 +1,25 @@
-fetch dt.davis.events, from:-30d
-| filter event.category == "INFO"
-| expand affected_entity_ids
+Disk Usage Forecast:
 
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
+timeseries avg(dt.host.disk.used_percent), by:{dt.entity.host, dt.entity.disk},
+  bins: 120, from:now()-7d, to:now(),
+  filter: dt.entity.host in [
+    fetch dt.entity.host | filter arrayIndexOf(tags, "APMID:APP00005497") != -1 | fields id
+  ]
 
-| filter isNotNull(host_id)
 
-| fieldsAdd `Change Type` =
-    if(event.type == "ESXI_VM_START", "VM Started",
-    else: if(event.type == "ESXI_VM_POWER_OFF", "VM Power Off",
-    else: if(event.type == "ESXI_VM_SHUTDOWN", "VM Shutdown",
-    else: if(event.type == "ESXI_VM_MOTION", "VM Migrated (vMotion)",
-    else: if(event.type == "ESXI_VM_DISCONNECTED", "VM Disconnected",
-    else: if(event.type == "PROCESS_RESTART", "Process Restarted",
-    else: "Other Infrastructure Event")))))))
+CPU Saturation Forecast (top-utilization hosts):
 
-| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type` }
-| sort day desc
+timeseries avg(dt.host.cpu.usage), by:{dt.entity.host},
+  bins: 120, from:now()-7d, to:now(),
+  filter: dt.entity.host in [
+    fetch dt.entity.host | filter arrayIndexOf(tags, "APMID:APP00005497") != -1 | fields id
+  ]
 
-What chang
+
+Memory Saturation Forecast:
+
+timeseries avg(dt.host.memory.usage), by:{dt.entity.host},
+  bins: 120, from:now()-7d, to:now(),
+  filter: dt.entity.host in [
+    fetch dt.entity.host | filter arrayIndexOf(tags, "APMID:APP00005497") != -1 | fields id
+  ]
