@@ -1,9 +1,5 @@
-Discovery query — confirm packet errors/dropped are live for your 67 SCCM hosts
-timeseries
-    err_rx  = avg(dt.host.net.nic.packets.errors.rx, scalar:true),
-    err_tx  = avg(dt.host.net.nic.packets.errors.tx, scalar:true),
-    drop_rx = avg(dt.host.net.nic.packets.dropped.rx, scalar:true),
-    drop_tx = avg(dt.host.net.nic.packets.dropped.tx, scalar:true),
+Tile 1 — NIC Received Errors
+timeseries err_rx = avg(dt.host.net.nic.packets.errors.rx, scalar:true),
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.host
@@ -11,5 +7,47 @@ timeseries
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
-| fields hostname, err_rx, err_tx, drop_rx, drop_tx
+| fieldsAdd err_rx = round(err_rx, decimals:2)
+| fields hostname, err_rx
 | sort err_rx desc
+
+Tile 2 — NIC Sent Errors
+timeseries err_tx = avg(dt.host.net.nic.packets.errors.tx, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fieldsAdd err_tx = round(err_tx, decimals:2)
+| fields hostname, err_tx
+| sort err_tx desc
+
+Tile 3 — NIC Received Packets Dropped
+timeseries drop_rx = avg(dt.host.net.nic.packets.dropped.rx, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fieldsAdd drop_rx = round(drop_rx, decimals:2)
+| fields hostname, drop_rx
+| sort drop_rx desc
+
+Tile 4 — NIC Sent Packets Dropped
+timeseries drop_tx = avg(dt.host.net.nic.packets.dropped.tx, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fieldsAdd drop_tx = round(drop_tx, decimals:2)
+| fields hostname, drop_tx
+| sort drop_tx desc
+
+Layout suggestion
