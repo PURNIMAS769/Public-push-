@@ -1,25 +1,9 @@
-Tile 1 — Disk Used % Top List (≥71%) — ready to run
-timeseries used_pct = avg(dt.host.disk.used.percent, scalar:true),
-  by:{dt.entity.host, dt.entity.disk},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
-| fieldsAdd used_pct = round(used_pct, decimals:2)
-| filter used_pct >= 71
-| fields hostname, diskname, used_pct
-| sort used_pct desc
-
-
-
-timeseries {
+Fixed Discovery Query (4 disk metrics, no braces)
+timeseries
     avail_b  = avg(dt.host.disk.avail, scalar:true),
     used_b   = avg(dt.host.disk.used, scalar:true),
     tp_write = avg(dt.host.disk.throughput.write, scalar:true),
-    tp_read  = avg(dt.host.disk.throughput.read, scalar:true)
-  },
+    tp_read  = avg(dt.host.disk.throughput.read, scalar:true),
   by:{dt.entity.host, dt.entity.disk},
   filter: dt.entity.host in [
     fetch dt.entity.host
@@ -30,19 +14,13 @@ timeseries {
 | fields hostname, diskname, avail_b, used_b, tp_write, tp_read
 | limit 10
 
-
-What to check
-
-
-
-Once confirmed — Combined Disk Statistics Table (with readable units)
-timeseries {
+Fixed Combined Disk Statistics Table
+timeseries
     used_pct = avg(dt.host.disk.used.percent, scalar:true),
     avail_b  = avg(dt.host.disk.avail, scalar:true),
     used_b   = avg(dt.host.disk.used, scalar:true),
     tp_write = avg(dt.host.disk.throughput.write, scalar:true),
-    tp_read  = avg(dt.host.disk.throughput.read, scalar:true)
-  },
+    tp_read  = avg(dt.host.disk.throughput.read, scalar:true),
   by:{dt.entity.host, dt.entity.disk},
   filter: dt.entity.host in [
     fetch dt.entity.host
@@ -56,4 +34,4 @@ timeseries {
 | sort used_pct desc
 | fields hostname, diskname, used_pct, avail_gib, used_gib, tp_write, tp_read
 
-Notes on readability
+What changed
