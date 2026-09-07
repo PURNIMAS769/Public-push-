@@ -1,6 +1,5 @@
-Memory Usage in GB — Total vs Used, per SCCM Host
-timeseries used_b  = avg(dt.host.memory.used, scalar:true),
-           avail_b = avg(dt.host.memory.avail.bytes, scalar:true),
+Host Uptime & Last Boot Time — SCCM Hosts
+timeseries uptime_sec = avg(dt.host.uptime, scalar:true),
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.host
@@ -8,8 +7,16 @@ timeseries used_b  = avg(dt.host.memory.used, scalar:true),
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd total_gib = round((used_b + avail_b) / 1073741824, decimals:1)
-| fieldsAdd used_gib  = round(used_b / 1073741824, decimals:1)
-| fieldsAdd used_pct  = round((used_b / (used_b + avail_b)) * 100, decimals:2)
-| fields hostname, total_gib, used_gib, used_pct
-| sort used_pct desc
+
+| fieldsAdd uptime_days = floor(uptime_sec / 86400),
+            uptime_hrs  = floor((uptime_sec % 86400) / 3600),
+            uptime_mins = floor((uptime_sec % 3600) / 60)
+| fieldsAdd uptime_formatted = concat(toString(uptime_days), "d ", toString(uptime_hrs), "h ", toString(uptime_mins), "m")
+
+| fieldsAdd last_boot_time = now() - (uptime_sec * 1s)
+
+| fieldsAdd reboot_status = if(uptime_days < 1, "Recently Rebooted",
+                            else: if(uptime_days > 45, "Pending Reboot Review", else: "Normal"))
+
+| fields hostname, uptime_formatted, last_boot_time, reboot_status
+| sort uptime_sec asc
