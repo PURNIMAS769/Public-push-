@@ -1,20 +1,24 @@
 
-fetch dt.entity.host
-| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-| fields id, hostname = entity.name
+fetch dt.entity.process_group_instance
+| filter contains(entity.name, "WsusService.exe")
+| fields id, pgi_name = entity.name
 
 | join [
-    timeseries avail = avg(dt.host.availability), by:{dt.entity.host}
-  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
+    timeseries avail = avg(dt.process.availability), by:{dt.entity.process_group_instance}
+  ], kind:leftOuter, on: left[id] == right[dt.entity.process_group_instance]
 | fieldsAdd avail_pct = arrayLast(right.avail) * 100
+| fields pgi_name, avail_pct
+| sort avail_pct asc
 
+
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| expand affected_entity_ids
 | join [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize open_problems = collectDistinct(display_id), by:{affected_entity_ids}
-  ], kind:leftOuter, on: left[id] == right[affected_entity_ids]
+    fetch dt.entity.process_group_instance
+    | filter contains(entity.name, "WsusService.exe")
+    | fields id, pgi_name = entity.name
+  ], kind:inner, on: left[affected_entity_ids] == right[id]
+| fields display_id, affected_entity_ids, right.pgi_name, event.start
+| sort event.start desc
 
-| fieldsAdd health_status = if(isNull(right.affected_entity_ids) and avail_pct == 100, "HEALTHY", "UNHEALTHY")
-| fields hostname, avail_pct, open_problems, health_status
-| sort health_status desc
