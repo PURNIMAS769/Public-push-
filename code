@@ -1,17 +1,15 @@
-Fixed query — using parse (DPL) to extract hostname
-timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
-  by:{`dt.entity.sql:sql_server_instance`}
-
-| fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| parse instance_name, "LD 'via: ' LD:host_fqdn ':'"
-
-| filter in(lower(host_fqdn), array(
-    "pftwswifscq03.prd.hcscad.net",
-    "pwauswifsq0101.prd.hcscad.net",
-    "pwauswifscq03.prd.hcscad.net",
-    "pwauswifsq0102.prd.hcscad.net",
-    "pwauswifscq04.prd.hcscad.net"
-  ))
-
-| fields instance_name, host_fqdn, blocked
-| sort blocked desc
+Memory Usage in GB — Total vs Used, per SCCM Host
+timeseries used_b  = avg(dt.host.memory.used, scalar:true),
+           avail_b = avg(dt.host.memory.avail.bytes, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fieldsAdd total_gib = round((used_b + avail_b) / 1073741824, decimals:1)
+| fieldsAdd used_gib  = round(used_b / 1073741824, decimals:1)
+| fieldsAdd used_pct  = round((used_b / (used_b + avail_b)) * 100, decimals:2)
+| fields hostname, total_gib, used_gib, used_pct
+| sort used_pct desc
