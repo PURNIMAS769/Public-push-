@@ -1,5 +1,6 @@
-PU Utilization — Forecast-compatible query
-timeseries cpu_usage = avg(dt.host.cpu.usage), by:{dt.entity.host},
+Memory:
+
+timeseries mem_usage = avg(dt.host.memory.usage), by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
@@ -8,4 +9,17 @@ timeseries cpu_usage = avg(dt.host.cpu.usage), by:{dt.entity.host},
   from:-15d, interval:1h
 | fieldsAdd host.name = entityName(dt.entity.host)
 
-Why this fixes it
+
+Disk:
+
+timeseries disk_usage = avg(dt.host.disk.used_percent), by:{dt.entity.host, dt.entity.disk},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ],
+  from:-15d, interval:1h
+| fieldsAdd host.name = entityName(dt.entity.host), disk.name = entityName(dt.entity.disk)
+
+
+Try
