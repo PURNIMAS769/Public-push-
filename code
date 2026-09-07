@@ -1,26 +1,29 @@
-CPU Usage % — Top hosts (≥10%)
+Fixed CPU query
 fetch dt.entity.host
 | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
 | fields id, hostname = entity.name
 
 | join [
-    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
+    timeseries cpu = avg(dt.host.cpu.usage, scalar:true), by:{dt.entity.host}
   ], kind:leftOuter, on: left[id] == right[dt.entity.host]
-| fieldsAdd cpu_avg_pct = round(arrayAvg(right.cpu), decimals:2)
+| fieldsAdd cpu_avg_pct = round(right.cpu, decimals:2)
 
 | filter cpu_avg_pct >= 10
 | fields hostname, cpu_avg_pct
 | sort cpu_avg_pct desc
 
-Memory Used % — Top hosts (≥41%)
+What changed
+Added scalar:true inside the avg() aggregation itself — this computes one true average value per host directly from the raw data points, rather than averaging a series of already-averaged time buckets.
+Since the result is now already a single scalar (not an array), dropped arrayAvg() entirely — just reference right.cpu directly.
+Same fix needed for Memory query
 fetch dt.entity.host
 | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
 | fields id, hostname = entity.name
 
 | join [
-    timeseries mem = avg(dt.host.memory.usage), by:{dt.entity.host}
+    timeseries mem = avg(dt.host.memory.usage, scalar:true), by:{dt.entity.host}
   ], kind:leftOuter, on: left[id] == right[dt.entity.host]
-| fieldsAdd mem_avg_pct = round(arrayAvg(right.mem), decimals:2)
+| fieldsAdd mem_avg_pct = round(right.mem, decimals:2)
 
 | filter mem_avg_pct >= 41
 | fields hostname, mem_avg_pct
