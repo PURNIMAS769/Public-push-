@@ -1,39 +1,16 @@
-Traffic Out:
+Tile 1 — Bits In (trend, top 20 by avg)
 
-timeseries traffic_out = avg(dt.host.net.nic.bytes_tx),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter in(lower(entity.name), array(
-        "pftwswifsc02.prd.hcscad.net","pftwswifsc03.prd.hcscad.net","pftwswifsc04.prd.hcscad.net",
-        "pwauswifsc08.prd.hcscad.net","pwauswifsc09.prd.hcscad.net","pwauswifsc10.prd.hcscad.net",
-        "pwauswifsc11.prd.hcscad.net","pwauswifsc12.prd.hcscad.net","pwauswifsc13.prd.hcscad.net",
-        "pwauswifsc14.prd.hcscad.net","pwauswifsc15.prd.hcscad.net"
-      ))
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| sort arrayLast(traffic_out) desc
+timeseries bits_in = avg(cloud.azure.microsoft_network.expressroutecircuits.bitsinpersecond),
+  by:{dt.entity.custom_device}
+| fieldsAdd circuit_name = entityName(dt.entity.custom_device)
+| sort arrayAvg(bits_in) desc
 | limit 20
 
 
-Traffic In:
+Tile 2 — Bits Out (trend, top 20 by avg)
 
-timeseries traffic_in = avg(dt.host.net.nic.bytes_rx),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter in(lower(entity.name), array(
-        "pftwswifsc02.prd.hcscad.net","pftwswifsc03.prd.hcscad.net","pftwswifsc04.prd.hcscad.net",
-        "pwauswifsc08.prd.hcscad.net","pwauswifsc09.prd.hcscad.net","pwauswifsc10.prd.hcscad.net",
-        "pwauswifsc11.prd.hcscad.net","pwauswifsc12.prd.hcscad.net","pwauswifsc13.prd.hcscad.net",
-        "pwauswifsc14.prd.hcscad.net","pwauswifsc15.prd.hcscad.net"
-      ))
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| sort arrayLast(traffic_in) desc
+timeseries bits_out = avg(cloud.azure.microsoft_network.expressroutecircuits.bitsoutpersecond),
+  by:{dt.entity.custom_device}
+| fieldsAdd circuit_name = entityName(dt.entity.custom_device)
+| sort arrayAvg(bits_out) desc
 | limit 20
-
-
-Run these
