@@ -1,122 +1,27 @@
-Open Alert Count by Category — Service added
-fetch dt.davis.problems, from:-60d
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| expand affected_entity_ids
+CPU Usage % — Top hosts (≥10%)
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+| fields id, hostname = entity.name
 
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
+| join [
+    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
+  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
+| fieldsAdd cpu_avg_pct = round(arrayAvg(right.cpu), decimals:2)
 
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | lookup [
-        fetch dt.entity.host
-        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-        | fields id
-      ], sourceField:h, lookupField:id, prefix:"hh_"
-    | filter isNotNull(hh_id)
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
+| filter cpu_avg_pct >= 10
+| fields hostname, cpu_avg_pct
+| sort cpu_avg_pct desc
 
-| fieldsAdd is_os_service = matchesValue(affected_entity_types, "dt.entity.os:service")
-| filter isNotNull(host_id) or isNotNull(proc_id)
+Memory Used % — Top hosts (≥41%)
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+| fields id, hostname = entity.name
 
-| fieldsAdd entity_kind = if(is_os_service and isNotNull(host_id), "Service",
-                          else: if(isNotNull(host_id), "Host",
-                          else: if(isNotNull(proc_id), "Process", else: "Other")))
+| join [
+    timeseries mem = avg(dt.host.memory.usage), by:{dt.entity.host}
+  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
+| fieldsAdd mem_avg_pct = round(arrayAvg(right.mem), decimals:2)
 
-| summarize problem_count = countDistinct(event.id), by:{ event.category, entity_kind }
-| sort problem_count desc
-
-
-
-2️⃣ Active Alert Analysis — Service added as a column
-fetch dt.davis.problems, from:-60d
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| expand affected_entity_ids
-
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
-
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | lookup [
-        fetch dt.entity.host
-        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-        | fields id
-      ], sourceField:h, lookupField:id, prefix:"hh_"
-    | filter isNotNull(hh_id)
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
-
-| fieldsAdd is_os_service = matchesValue(affected_entity_types, "dt.entity.os:service")
-| fieldsAdd is_sccm = if(isNotNull(host_id) or isNotNull(proc_id), 1)
-
-| summarize
-    problem_title  = takeFirst(event.name),
-    severity       = takeFirst(event.category),
-    status         = takeFirst(event.status),
-    root_cause     = takeFirst(root_cause_entity_name),
-    affected_types = takeFirst(affected_entity_types),
-    start_time     = takeFirst(event.start),
-    problem_event_id = takeFirst(event.id),
-    is_sccm_related  = max(is_sccm),
-    is_service_related = max(if(is_os_service and isNotNull(host_id), 1, else:0)),
-  by:{display_id}
-
-| filter is_sccm_related == 1
-| fieldsAdd entity_kind = if(is_service_related == 1, "Service", "Host/Process")
-
-| fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
-| fieldsAdd days = floor(total_seconds / 86400),
-            hrs  = floor((total_seconds % 86400) / 3600),
-            mins = floor((total_seconds % 3600) / 60)
-| fieldsAdd age_formatted = concat(toString(days), "d ", toString(hrs), "h ", toString(mins), "m")
-
-| fieldsAdd problem_link = concat(
-    "https://fjh52344.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
-    problem_event_id, "?from=now()-24h&to=now()")
-
-| sort start_time desc
-| fields display_id, problem_title, severity, status, entity_kind, root_cause, affected_types, start_time, age_formatted, problem_link
-
-
-
-3️⃣ Alert Trend — Service added
-fetch dt.davis.problems, from:-60d
-| filter not(dt.davis.is_duplicate)
-| expand affected_entity_ids
-
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
-
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | lookup [
-        fetch dt.entity.host
-        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-        | fields id
-      ], sourceField:h, lookupField:id, prefix:"hh_"
-    | filter isNotNull(hh_id)
-    | fields id
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
-
-| fieldsAdd is_os_service = matchesValue(affected_entity_types, "dt.entity.os:service")
-| fieldsAdd entity_kind = if(is_os_service and isNotNull(host_id), "Service",
-                          else: if(isNotNull(host_id), "Host",
-                          else: if(isNotNull(proc_id), "Process", else: null)))
-
-| filter isNotNull(entity_kind)
-| makeTimeseries alerts = countDistinct(event.id), by:{entity_kind, event.category}
-
+| filter mem_avg_pct >= 41
+| fields hostname, mem_avg_pct
+| sort mem_avg_pct desc
