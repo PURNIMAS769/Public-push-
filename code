@@ -1,24 +1,38 @@
-SCCM Server Disk Status — Combined Table
-timeseries {
-    used_pct  = avg(dt.host.disk.used_percent, scalar:true),
-    avail_b   = avg(dt.host.disk.avail, scalar:true),
-    used_b    = avg(dt.host.disk.used, scalar:true),
-    tp_write  = avg(dt.host.disk.bytes_written, scalar:true),
-    tp_read   = avg(dt.host.disk.bytes_read, scalar:true),
-    write_ops = avg(dt.host.disk.write_ops, scalar:true),
-    read_ops  = avg(dt.host.disk.read_ops, scalar:true)
-  },
-  by:{dt.entity.host, dt.entity.disk},
+Tile 1 — Traffic Out (trend, top 20)
+
+timeseries traffic_out = avg(dt.host.net.nic.bytes_tx),
+  by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | filter in(entity.name, array(
+        "PFTWSWIFSC02.prd.hcscad.net","PFTWSWIFSC03.prd.hcscad.net","PFTWSWIFSC04.prd.hcscad.net",
+        "PWAUSWIFSC08.prd.hcscad.net","PWAUSWIFSC09.prd.hcscad.net","PWAUSWIFSC10.prd.hcscad.net",
+        "PWAUSWIFSC11.prd.hcscad.net","PWAUSWIFSC12.prd.hcscad.net","PWAUSWIFSC13.prd.hcscad.net",
+        "PWAUSWIFSC14.prd.hcscad.net","PWAUSWIFSC15.prd.hcscad.net"
+      ))
     | fields id
   ]
-| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
-| fieldsAdd used_pct = round(used_pct, decimals:2)
-| fieldsAdd avail_gib = round(avail_b / 1073741824, decimals:1)
-| fieldsAdd used_gib = round(used_b / 1073741824, decimals:1)
-| fieldsAdd read_ops = round(read_ops, decimals:1)
-| fieldsAdd write_ops = round(write_ops, decimals:1)
-| sort used_pct desc
-| fields hostname, diskname, used_pct, avail_gib, used_gib, tp_write, tp_read, read_ops, write_ops
+| fieldsAdd hostname = entityName(dt.entity.host)
+| sort arrayLast(traffic_out) desc
+| limit 20
+
+
+Tile 2 — Traffic In (trend, top 20) — identical, just swap bytes_tx → bytes_rx:
+
+timeseries traffic_in = avg(dt.host.net.nic.bytes_rx),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter in(entity.name, array(
+        "PFTWSWIFSC02.prd.hcscad.net","PFTWSWIFSC03.prd.hcscad.net","PFTWSWIFSC04.prd.hcscad.net",
+        "PWAUSWIFSC08.prd.hcscad.net","PWAUSWIFSC09.prd.hcscad.net","PWAUSWIFSC10.prd.hcscad.net",
+        "PWAUSWIFSC11.prd.hcscad.net","PWAUSWIFSC12.prd.hcscad.net","PWAUSWIFSC13.prd.hcscad.net",
+        "PWAUSWIFSC14.prd.hcscad.net","PWAUSWIFSC15.prd.hcscad.net"
+      ))
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| sort arrayLast(traffic_in) desc
+| limit 20
+
+Note on units
