@@ -1,3 +1,4 @@
+Fixed Combined Disk Statistics Table (correct SQL server scope)
 timeseries {
     used_pct = avg(dt.host.disk.used_percent, scalar:true),
     avail_b  = avg(dt.host.disk.avail, scalar:true),
@@ -9,6 +10,13 @@ timeseries {
   filter: dt.entity.host in [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+       or in(entity.name, array(
+           "pftwswifscq03.prd.hcscad.net",
+           "pwauswifsq0101.prd.hcscad.net",
+           "pwauswifscq03.prd.hcscad.net",
+           "pwauswifsq0102.prd.hcscad.net",
+           "pwauswifscq04.prd.hcscad.net"
+         ))
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
@@ -18,3 +26,10 @@ timeseries {
 | sort used_pct desc
 | fields hostname, diskname, used_pct, avail_gib, used_gib, tp_write, tp_read
 
+One thing to clarify before you run this
+
+Since these 5 named hosts appear to be dedicated SQL Server machines supporting SCCM (not part of the core 67-host SCCM tag), do you want me to keep this exact "tag OR named SQL hosts" scope for all the other tiles we've already built (Host Availability, CPU, Memory, Alerts, etc.), or was that broader scope intentional only for disk monitoring? Worth confirming now so we keep the whole dashboard consistent.
+
+Provide your feedback on BizChat
+Apply SQL server scope to CPU and memory queriesUpdate alert and problem queries with SQL server scope
+AllPeoplePeopleFilesFilesMeetingsMeetingsEmailsEmailsChatsChatsChannelsChannelsSitesSitesOtherOther
