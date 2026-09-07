@@ -1,51 +1,17 @@
-Tile 1: smsexec.exe (Process) — same pattern as before, just swap the name
-fetch dt.entity.process_group_instance
-| filter contains(entity.name, "smsexec.exe")
-| fields id, pgi_name = entity.name
+fetch `dt.entity.os:service` 
+| filter contains(entity.name, "WDSServer") 
+| fields id, svc_name = entity.name
 
+
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| expand affected_entity_ids
 | join [
-    timeseries avail = avg(dt.process.availability), by:{dt.entity.process_group_instance},
-      filter: dt.entity.process_group_instance in [
-        fetch dt.entity.process_group_instance
-        | filter contains(entity.name, "smsexec.exe")
-        | fields id
-      ]
-  ], kind:leftOuter, on: left[id] == right[dt.entity.process_group_instance]
-| fieldsAdd avail_pct = arrayLast(right.avail) * 100
-
-| join [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize open_problems = collectDistinct(display_id), by:{affected_entity_ids}
-  ], kind:leftOuter, on: left[id] == right[affected_entity_ids]
-
-| fieldsAdd health_status = if(isNull(right.affected_entity_ids) and avail_pct == 100, "HEALTHY", else:"UNHEALTHY")
-| fieldsAdd open_problems = right.open_problems
-| fields pgi_name, avail_pct, open_problems, health_status
-| sort health_status desc
+    fetch `dt.entity.os:service`
+    | filter contains(entity.name, "WDSServer")
+    | fields id, svc_name = entity.name
+  ], kind:inner, on: left[affected_entity_ids] == right[id]
+| fields display_id, affected_entity_ids, right.svc_name, event.start
+| sort event.start desc
 
 
-Discovery Query — confirm WDSServer service data + status values
-fetch dt.entity.os:service
-| filter entity.name == "WDSServer"
-| fieldsAdd h = runs_on[dt.entity.host]
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:h, lookupField:id, prefix:"hh_"
-| filter isNotNull(hh_id)
-| fields id, svc_name = entity.name, host_id = h
-
-
-
-Discovery Query — confirm the availability/status metric works as expected
-timeseries total = count(dt.osservice.availability),
-           running = count(dt.osservice.availability, filter: in(dt.osservice.status, array("running","active"))),
-  by:{dt.osservice.name, dt.entity.host},
-  filter: dt.osservice.name == "WDSServer"
-| fieldsAdd total_sum = arraySum(total), running_sum = arraySum(running)
-| fieldsAdd avail_pct = (running_sum / total_sum) * 100
-| fields dt.entity.host, avail_pct
-| sort avail_pct asc
