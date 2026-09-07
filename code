@@ -1,22 +1,30 @@
-Host Uptime & Last Boot Time — SCCM Hosts
-timeseries uptime_sec = avg(dt.host.uptime, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
+Discovery — what change/info events exist for SCCM hosts + processes (last 30d)
+fetch dt.davis.events, from:-30d
+| filter event.category == "INFO"
+| expand affected_entity_ids
+
+| lookup [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
     | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
+  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
 
-| fieldsAdd uptime_days = floor(uptime_sec / 86400),
-            uptime_hrs  = floor((uptime_sec % 86400) / 3600),
-            uptime_mins = floor((uptime_sec % 3600) / 60)
-| fieldsAdd uptime_formatted = concat(toString(uptime_days), "d ", toString(uptime_hrs), "h ", toString(uptime_mins), "m")
+| lookup [
+    fetch dt.entity.process_group_instance
+    | fieldsAdd h = runs_on[dt.entity.host]
+    | lookup [
+        fetch dt.entity.host
+        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+        | fields id
+      ], sourceField:h, lookupField:id, prefix:"hh_"
+    | filter isNotNull(hh_id)
+    | fields id
+  ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
 
-| fieldsAdd last_boot_time = now() - (uptime_sec * 1s)
+| filter isNotNull(host_id) or isNotNull(proc_id)
+| fields event.name, event.type, event.category, event.start
+| sort event.start desc
+| limit 30
 
-| fieldsAdd reboot_status = if(uptime_days < 1, "Recently Rebooted",
-                            else: if(uptime_days > 45, "Pending Reboot Review", else: "Normal"))
 
-| fields hostname, uptime_formatted, last_boot_time, reboot_status
-| sort uptime_sec asc
+What to check: This s
