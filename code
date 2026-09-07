@@ -1,22 +1,15 @@
-Check 1 — Does NetTracer have any data at all in your tenant (regardless of host)?
-timeseries retr_pct = avg(dt.process.nettracer.retr.percent, scalar:true),
-  by:{dt.entity.process_group_instance}
-| fieldsAdd pgi_name = entityName(dt.entity.process_group_instance)
-| fields pgi_name, retr_pct
-| sort retr_pct desc
-| limit 10
-
-
-If this also returns nothing, NetTracer likely isn't enabled anywhere in this tenant/environment (it requires explicit activation and OneAgent version support). If it does return rows (just not for SCCM hosts), then NetTracer is on, but not yet capturing SCCM's specific processes.
-
-Check 2 — Confirm the runs_on join isn't silently dropping everything (isolate the join from the metric)
-fetch dt.entity.process_group_instance
-| fieldsAdd h = runs_on[dt.entity.host]
-| lookup [
+Discovery query — confirm packet errors/dropped are live for your 67 SCCM hosts
+timeseries
+    err_rx  = avg(dt.host.net.nic.packets.errors.rx, scalar:true),
+    err_tx  = avg(dt.host.net.nic.packets.errors.tx, scalar:true),
+    drop_rx = avg(dt.host.net.nic.packets.dropped.rx, scalar:true),
+    drop_tx = avg(dt.host.net.nic.packets.dropped.tx, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
     | fields id
-  ], sourceField:h, lookupField:id, prefix:"hh_"
-| filter isNotNull(hh_id)
-| fields id, entity.name
-| limit 10
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fields hostname, err_rx, err_tx, drop_rx, drop_tx
+| sort err_rx desc
