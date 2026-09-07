@@ -1,7 +1,21 @@
-erify both exist and are collecting for your 5 SQL hosts:
 
-fetch metric.series
-| filter contains(metric.key, "sql-server")
-   and (contains(metric.key, "block") or contains(metric.key, "quer") or contains(metric.key, "lock"))
-| summarize count(), by:{metric.key}
-| sort metric.key asc
+timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
+  by:{dt.entity.sql:sql_server_instance}
+| fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
+| fieldsAdd h = runs_on[dt.entity.host]
+| lookup [
+    fetch dt.entity.host
+    | filter in(lower(entity.name), array(
+        "pftwswifscq03.prd.hcscad.net",
+        "pwauswifsq0101.prd.hcscad.net",
+        "pwauswifscq03.prd.hcscad.net",
+        "pwauswifsq0102.prd.hcscad.net",
+        "pwauswifscq04.prd.hcscad.net"
+      ))
+    | fields id
+  ], sourceField:h, lookupField:id, prefix:"hh_"
+| filter isNotNull(hh_id)
+| fields instance_name, blocked
+| sort blocked desc
+
+Regarding Lon
