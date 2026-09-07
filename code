@@ -1,25 +1,32 @@
-fetch dt.entity.process_group_instance
-| filter contains(entity.name, "sitecomp.exe")
-| fields id, pgi_name = entity.name
+fetch dt.davis.problems, from:-60d
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| expand affected_entity_ids
+| expand affected_entity_types
 
-| join [
-    timeseries avail = avg(dt.process.availability), by:{dt.entity.process_group_instance},
-      filter: dt.entity.process_group_instance in [
-        fetch dt.entity.process_group_instance
-        | filter contains(entity.name, "sitecomp.exe")
+// Scope to SCCM-related entities only
+| lookup [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
+
+| lookup [
+    fetch dt.entity.process_group_instance
+    | fieldsAdd h = runs_on[dt.entity.host]
+    | lookup [
+        fetch dt.entity.host
+        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
         | fields id
-      ]
-  ], kind:leftOuter, on: left[id] == right[dt.entity.process_group_instance]
-| fieldsAdd avail_pct = arrayLast(right.avail) * 100
+      ], sourceField:h, lookupField:id, prefix:"hh_"
+    | filter isNotNull(hh_id)
+    | fields id
+  ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
 
-| join [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize open_problems = collectDistinct(display_id), by:{affected_entity_ids}
-  ], kind:leftOuter, on: left[id] == right[affected_entity_ids]
+| filter isNotNull(host_id) or isNotNull(proc_id)
 
-| fieldsAdd health_status = if(isNull(right.affected_entity_ids) and avail_pct == 100, "HEALTHY", else:"UNHEALTHY")
-| fieldsAdd open_problems = right.open_problems
-| fields pgi_name, avail_pct, open_problems, health_status
-| sort health_status desc
+| fieldsAdd entity_kind = if(isNotNull(host_id), "Host", else: if(isNotNull(proc_id), "Process", else: "Other"))
+
+| summarize problem_count = countDistinct(event.id), by:{ event.category, entity_kind }
+| sort problem_count desc
+
+What changed vs. your reference
