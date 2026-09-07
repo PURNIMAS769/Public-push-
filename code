@@ -1,30 +1,59 @@
-Fixed CPU query
-fetch dt.entity.host
-| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-| fields id, hostname = entity.name
+Tile 1 — Disk Used % Top List (≥71%) — ready to run
+timeseries used_pct = avg(dt.host.disk.used.percent, scalar:true),
+  by:{dt.entity.host, dt.entity.disk},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
+| fieldsAdd used_pct = round(used_pct, decimals:2)
+| filter used_pct >= 71
+| fields hostname, diskname, used_pct
+| sort used_pct desc
 
-| join [
-    timeseries cpu = avg(dt.host.cpu.usage, scalar:true), by:{dt.entity.host}
-  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
-| fieldsAdd cpu_avg_pct = round(right.cpu, decimals:2)
 
-| filter cpu_avg_pct >= 10
-| fields hostname, cpu_avg_pct
-| sort cpu_avg_pct desc
 
-What changed
-Added scalar:true inside the avg() aggregation itself — this computes one true average value per host directly from the raw data points, rather than averaging a series of already-averaged time buckets.
-Since the result is now already a single scalar (not an array), dropped arrayAvg() entirely — just reference right.cpu directly.
-Same fix needed for Memory query
-fetch dt.entity.host
-| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-| fields id, hostname = entity.name
+timeseries {
+    avail_b  = avg(dt.host.disk.avail, scalar:true),
+    used_b   = avg(dt.host.disk.used, scalar:true),
+    tp_write = avg(dt.host.disk.throughput.write, scalar:true),
+    tp_read  = avg(dt.host.disk.throughput.read, scalar:true)
+  },
+  by:{dt.entity.host, dt.entity.disk},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
+| fields hostname, diskname, avail_b, used_b, tp_write, tp_read
+| limit 10
 
-| join [
-    timeseries mem = avg(dt.host.memory.usage, scalar:true), by:{dt.entity.host}
-  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
-| fieldsAdd mem_avg_pct = round(right.mem, decimals:2)
 
-| filter mem_avg_pct >= 41
-| fields hostname, mem_avg_pct
-| sort mem_avg_pct desc
+What to check
+
+
+
+Once confirmed — Combined Disk Statistics Table (with readable units)
+timeseries {
+    used_pct = avg(dt.host.disk.used.percent, scalar:true),
+    avail_b  = avg(dt.host.disk.avail, scalar:true),
+    used_b   = avg(dt.host.disk.used, scalar:true),
+    tp_write = avg(dt.host.disk.throughput.write, scalar:true),
+    tp_read  = avg(dt.host.disk.throughput.read, scalar:true)
+  },
+  by:{dt.entity.host, dt.entity.disk},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
+| fieldsAdd used_pct = round(used_pct, decimals:2)
+| fieldsAdd avail_gib = round(avail_b / 1073741824, decimals:1)
+| fieldsAdd used_gib = round(used_b / 1073741824, decimals:1)
+| sort used_pct desc
+| fields hostname, diskname, used_pct, avail_gib, used_gib, tp_write, tp_read
+
+Notes on readability
