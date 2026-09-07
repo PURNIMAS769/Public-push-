@@ -1,3 +1,25 @@
-fetch metric.series | filter contains(metric.key, "dns") 
-| summarize count(), by:{metric.key} 
-| sort metric.key asc
+Tile 1 — DNS Query Time (Top List, host rollup)
+timeseries qtime = avg(dt.host.dns.query_time, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| sort qtime desc
+| fields hostname, qtime
+
+Tile 2 — Single Query Time by Host (Top List, same metric, per-host granularity)
+timeseries qtime = avg(dt.host.dns.query_time, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| sort qtime desc
+| fields hostname, qtime
+
+Important note
