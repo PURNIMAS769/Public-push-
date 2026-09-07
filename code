@@ -1,22 +1,20 @@
-fetch dt.entity.host 
-| filter arrayIndexOf(tags, "APMID:APP00005497") != -1 
-| fields id, hostname = entity.name 
-| join [ timeseries avail = avg(dt.host.availability), by:{dt.entity.host} ],
-kind:leftOuter, on: left[id] == right[dt.entity.host] 
-| fieldsAdd latest_avail = arrayLast(right.avail)
-| fields hostname, latest_avail 
-| sort latest_avail asc
 
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+| fields id, hostname = entity.name
 
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| expand affected_entity_ids
 | join [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id, hostname = entity.name
-  ], kind:inner, on: left[affected_entity_ids] == right[id]
-| fields display_id, title, affected_entity_ids, right.hostname, event.start
-| sort event.start desc
+    timeseries avail = avg(dt.host.availability), by:{dt.entity.host}
+  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
+| fieldsAdd avail_pct = arrayLast(right.avail) * 100
 
+| join [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | expand affected_entity_ids
+    | summarize open_problems = collectDistinct(display_id), by:{affected_entity_ids}
+  ], kind:leftOuter, on: left[id] == right[affected_entity_ids]
 
+| fieldsAdd health_status = if(isNull(right.affected_entity_ids) and avail_pct == 100, "HEALTHY", "UNHEALTHY")
+| fields hostname, avail_pct, open_problems, health_status
+| sort health_status desc
