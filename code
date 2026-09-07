@@ -1,13 +1,39 @@
-Final CPU Usage — Forecast Source Query (SCCM hosts only)
-timeseries cpu_usage = avg(dt.host.cpu.usage),
-           avg_usage = avg(dt.host.cpu.usage, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ],
-  from:-15d, interval:1h
-| fieldsAdd host.name = entityName(dt.entity.host)
-| sort avg_usage desc
-| limit 20
+CPU Usage — with time range added
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+| fields id, hostname = entity.name
+
+| join [
+    timeseries cpu = avg(dt.host.cpu.usage, scalar:true), by:{dt.entity.host}, from:-15d, interval:1h
+  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
+| fieldsAdd cpu_avg_pct = round(right.cpu, decimals:2)
+
+| fields hostname, cpu_avg_pct, id
+| sort cpu_avg_pct desc
+
+Memory Usage — with time range added
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+| fields id, hostname = entity.name
+
+| join [
+    timeseries mem = avg(dt.host.memory.usage, scalar:true), by:{dt.entity.host}, from:-15d, interval:1h
+  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
+| fieldsAdd mem_avg_pct = round(right.mem, decimals:2)
+
+| fields hostname, mem_avg_pct, id
+| sort mem_avg_pct desc
+
+Disk Usage — with time range added
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+| fields id, hostname = entity.name
+
+| join [
+    timeseries disk = avg(dt.host.disk.used_percent, scalar:true), by:{dt.entity.host, dt.entity.disk}, from:-15d, interval:1h
+  ], kind:leftOuter, on: left[id] == right[dt.entity.host]
+| fieldsAdd disk_avg_pct = round(right.disk, decimals:2)
+| fieldsAdd disk_name = entityName(right.dt.entity.disk, "dt.entity.disk")
+
+| fields hostname, disk_name, disk_avg_pct, id
+| sort disk_avg_pct desc
