@@ -1,26 +1,24 @@
+SCCM Server Disk Status — Combined Table
 timeseries {
-    used_pct = avg(dt.host.disk.used_percent, scalar:true),
-    avail_b  = avg(dt.host.disk.avail, scalar:true),
-    used_b   = avg(dt.host.disk.used, scalar:true),
-    tp_write = avg(dt.host.disk.bytes_written, scalar:true),
-    tp_read  = avg(dt.host.disk.bytes_read, scalar:true)
+    used_pct  = avg(dt.host.disk.used_percent, scalar:true),
+    avail_b   = avg(dt.host.disk.avail, scalar:true),
+    used_b    = avg(dt.host.disk.used, scalar:true),
+    tp_write  = avg(dt.host.disk.bytes_written, scalar:true),
+    tp_read   = avg(dt.host.disk.bytes_read, scalar:true),
+    write_ops = avg(dt.host.disk.write_ops, scalar:true),
+    read_ops  = avg(dt.host.disk.read_ops, scalar:true)
   },
   by:{dt.entity.host, dt.entity.disk},
   filter: dt.entity.host in [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-       or contains(entity.name, "pftwswifscq03")
-       or contains(entity.name, "pwauswifsq0101")
-       or contains(entity.name, "pwauswifscsq03")
-       or contains(entity.name, "pwauswifsq0102")
-       or contains(entity.name, "pwauswifscsq04")
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
 | fieldsAdd used_pct = round(used_pct, decimals:2)
 | fieldsAdd avail_gib = round(avail_b / 1073741824, decimals:1)
 | fieldsAdd used_gib = round(used_b / 1073741824, decimals:1)
+| fieldsAdd read_ops = round(read_ops, decimals:1)
+| fieldsAdd write_ops = round(write_ops, decimals:1)
 | sort used_pct desc
-| fields hostname, diskname, used_pct, avail_gib, used_gib, tp_write, tp_read
-
-Quick sanit
+| fields hostname, diskname, used_pct, avail_gib, used_gib, tp_write, tp_read, read_ops, write_ops
