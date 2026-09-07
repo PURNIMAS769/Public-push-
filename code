@@ -1,25 +1,17 @@
-Disk Usage Forecast:
+Corrected version — adapted for SCCM (no $Host dependency, explicit tag scope)
+timeseries cpu_usage = avg(dt.host.cpu.usage),
+           avg_usage = avg(dt.host.cpu.usage, scalar:true),
+  by:{dt.entity.host},
+  filter: in(entityAttr(dt.entity.host, "osType"), array("WINDOWS"))
+    and dt.entity.host in [
+      fetch dt.entity.host
+      | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+      | fields id
+    ],
+  from:-15d, interval:1h
+| fieldsAdd host.name = entityName(dt.entity.host)
+| sort avg_usage desc
+| limit 20
 
-timeseries avg(dt.host.disk.used_percent), by:{dt.entity.host, dt.entity.disk},
-  bins: 120, from:now()-7d, to:now(),
-  filter: dt.entity.host in [
-    fetch dt.entity.host | filter arrayIndexOf(tags, "APMID:APP00005497") != -1 | fields id
-  ]
-
-
-CPU Saturation Forecast (top-utilization hosts):
-
-timeseries avg(dt.host.cpu.usage), by:{dt.entity.host},
-  bins: 120, from:now()-7d, to:now(),
-  filter: dt.entity.host in [
-    fetch dt.entity.host | filter arrayIndexOf(tags, "APMID:APP00005497") != -1 | fields id
-  ]
-
-
-Memory Saturation Forecast:
-
-timeseries avg(dt.host.memory.usage), by:{dt.entity.host},
-  bins: 120, from:now()-7d, to:now(),
-  filter: dt.entity.host in [
-    fetch dt.entity.host | filter arrayIndexOf(tags, "APMID:APP00005497") != -1 | fields id
-  ]
+What changed
+Removed the {
