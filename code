@@ -1,5 +1,8 @@
-Tile 1 — NIC Received Errors
-timeseries err_rx = avg(dt.host.net.nic.packets.errors.rx, scalar:true),
+Tile 1 — Network Traffic (Total / In / Out) — 67 SCCM hosts
+timeseries {
+    traffic_in  = avg(dt.host.net.nic.bytes_rx, scalar:true),
+    traffic_out = avg(dt.host.net.nic.bytes_tx, scalar:true)
+  },
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.host
@@ -7,47 +10,16 @@ timeseries err_rx = avg(dt.host.net.nic.packets.errors.rx, scalar:true),
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd err_rx = round(err_rx, decimals:2)
-| fields hostname, err_rx
-| sort err_rx desc
+| fieldsAdd traffic_total = traffic_in + traffic_out
+| sort traffic_total desc
+| fields hostname, traffic_total, traffic_in, traffic_out
 
-Tile 2 — NIC Sent Errors
-timeseries err_tx = avg(dt.host.net.nic.packets.errors.tx, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd err_tx = round(err_tx, decimals:2)
-| fields hostname, err_tx
-| sort err_tx desc
+Note
 
-Tile 3 — NIC Received Packets Dropped
-timeseries drop_rx = avg(dt.host.net.nic.packets.dropped.rx, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd drop_rx = round(drop_rx, decimals:2)
-| fields hostname, drop_rx
-| sort drop_rx desc
+dt.host.net.nic.traffic (combined in+out) has no direct 1:1 Grail metric — only bytes_rx/bytes_tx are supported natively on Grail, per Dynatrace's own migration guide, so combining them ourselves (traffic_in + traffic_out) is the documented, correct approach, not a workaround.
 
-Tile 4 — NIC Sent Packets Dropped
-timeseries drop_tx = avg(dt.host.net.nic.packets.dropped.tx, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd drop_tx = round(drop_tx, decimals:2)
-| fields hostname, drop_tx
-| sort drop_tx desc
-
-Layout suggestion
+🔍 Discovery Query — find the exact DNS query-time metric key
+fetch metric.series
+| filter contains(metric.key, "dns")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
