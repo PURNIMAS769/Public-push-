@@ -1,4 +1,3 @@
-Tile 1 — Network Traffic (Total / In / Out) — 67 SCCM hosts
 timeseries {
     traffic_in  = avg(dt.host.net.nic.bytes_rx, scalar:true),
     traffic_out = avg(dt.host.net.nic.bytes_tx, scalar:true)
@@ -11,15 +10,8 @@ timeseries {
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
 | fieldsAdd traffic_total = traffic_in + traffic_out
+| fieldsAdd traffic_total_mb = round(traffic_total / 1000000, decimals:2)
 | sort traffic_total desc
-| fields hostname, traffic_total, traffic_in, traffic_out
+| fields hostname, traffic_total_mb, traffic_in, traffic_out
 
-Note
-
-dt.host.net.nic.traffic (combined in+out) has no direct 1:1 Grail metric — only bytes_rx/bytes_tx are supported natively on Grail, per Dynatrace's own migration guide, so combining them ourselves (traffic_in + traffic_out) is the documented, correct approach, not a workaround.
-
-🔍 Discovery Query — find the exact DNS query-time metric key
-fetch metric.series
-| filter contains(metric.key, "dns")
-| summarize count(), by:{metric.key}
-| sort metric.key asc
+What changed
