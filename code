@@ -1,9 +1,10 @@
-Fixed Discovery Query (4 disk metrics, no braces)
-timeseries
+Step 1 — Fix the syntax per the editor's requirement
+timeseries {
     avail_b  = avg(dt.host.disk.avail, scalar:true),
     used_b   = avg(dt.host.disk.used, scalar:true),
     tp_write = avg(dt.host.disk.throughput.write, scalar:true),
-    tp_read  = avg(dt.host.disk.throughput.read, scalar:true),
+    tp_read  = avg(dt.host.disk.throughput.read, scalar:true)
+  },
   by:{dt.entity.host, dt.entity.disk},
   filter: dt.entity.host in [
     fetch dt.entity.host
@@ -11,27 +12,3 @@ timeseries
     | fields id
   ]
 | fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
-| fields hostname, diskname, avail_b, used_b, tp_write, tp_read
-| limit 10
-
-Fixed Combined Disk Statistics Table
-timeseries
-    used_pct = avg(dt.host.disk.used.percent, scalar:true),
-    avail_b  = avg(dt.host.disk.avail, scalar:true),
-    used_b   = avg(dt.host.disk.used, scalar:true),
-    tp_write = avg(dt.host.disk.throughput.write, scalar:true),
-    tp_read  = avg(dt.host.disk.throughput.read, scalar:true),
-  by:{dt.entity.host, dt.entity.disk},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
-| fieldsAdd used_pct = round(used_pct, decimals:2)
-| fieldsAdd avail_gib = round(avail_b / 1073741824, decimals:1)
-| fieldsAdd used_gib = round(used_b / 1073741824, decimals:1)
-| sort used_pct desc
-| fields hostname, diskname, used_pct, avail_gib, used_gib, tp_write, tp_read
-
-What changed
