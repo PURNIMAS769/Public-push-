@@ -1,14 +1,6 @@
-Step 1 — Fix the syntax per the editor's requirement
-timeseries {
-    avail_b  = avg(dt.host.disk.avail, scalar:true),
-    used_b   = avg(dt.host.disk.used, scalar:true),
-    tp_write = avg(dt.host.disk.throughput.write, scalar:true),
-    tp_read  = avg(dt.host.disk.throughput.read, scalar:true)
-  },
-  by:{dt.entity.host, dt.entity.disk},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host), diskname = entityName(dt.entity.disk)
+Discovery Query — find the real disk metric keys in your environment
+fetch metric.series
+| filter contains(metric.key, "disk")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
+| limit 50
