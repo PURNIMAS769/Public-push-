@@ -1,9 +1,9 @@
-Fixed query — extract hostname from the string + fix entity type
+Fixed query — using parse (DPL) to extract hostname
 timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
   by:{`dt.entity.sql:sql_server_instance`}
 
 | fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| fieldsAdd host_fqdn = extract(instance_name, "via: ([^:]+):")
+| parse instance_name, "LD 'via: ' LD:host_fqdn ':'"
 
 | filter in(lower(host_fqdn), array(
     "pftwswifscq03.prd.hcscad.net",
@@ -15,6 +15,3 @@ timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
 
 | fields instance_name, host_fqdn, blocked
 | sort blocked desc
-
-What changed
-Dro
