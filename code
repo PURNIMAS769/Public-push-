@@ -1,15 +1,20 @@
-ixed Diagnostic Query
+Fixed query — extract hostname from the string + fix entity type
 timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
   by:{`dt.entity.sql:sql_server_instance`}
 
-| lookup [
-    fetch `dt.entity.sql:sql_server_instance`
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | fields id, h
-  ], sourceField:`dt.entity.sql:sql_server_instance`, lookupField:id, prefix:"inst_"
-
 | fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| fieldsAdd host_name = entityName(inst_h, "dt.entity.host")
-| fields instance_name, host_name, blocked
+| fieldsAdd host_fqdn = extract(instance_name, "via: ([^:]+):")
+
+| filter in(lower(host_fqdn), array(
+    "pftwswifscq03.prd.hcscad.net",
+    "pwauswifsq0101.prd.hcscad.net",
+    "pwauswifscq03.prd.hcscad.net",
+    "pwauswifsq0102.prd.hcscad.net",
+    "pwauswifscq04.prd.hcscad.net"
+  ))
+
+| fields instance_name, host_fqdn, blocked
 | sort blocked desc
-| limit 30
+
+What changed
+Dro
