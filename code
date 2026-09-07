@@ -1,16 +1,17 @@
-Tile 1 — Bits In (trend, top 20 by avg)
+1️⃣ NIC Retransmission (overall)
+builtin:host.net.nic.retransmission
+:filter(and(or(in("dt.entity.host",entitySelector("type(host)",tag(~"APMID:APP00005497~")))))
+:splitBy("dt.entity.host","dt.entity.network_interface")
+:sort(value(auto,descending))
 
-timeseries bits_in = avg(cloud.azure.microsoft_network.expressroutecircuits.bitsinpersecond),
-  by:{dt.entity.custom_device}
-| fieldsAdd circuit_name = entityName(dt.entity.custom_device)
-| sort arrayAvg(bits_in) desc
-| limit 20
+2️⃣ NIC Retransmission In (received packets retransmission)
+builtin:host.net.nic.retransmissionIn
+:filter(and(or(in("dt.entity.host",entitySelector("type(host)",tag(~"APMID:APP00005497~"))))))
+:splitBy("dt.entity.host")
+:sort(value(auto,descending))
 
-
-Tile 2 — Bits Out (trend, top 20 by avg)
-
-timeseries bits_out = avg(cloud.azure.microsoft_network.expressroutecircuits.bitsoutpersecond),
-  by:{dt.entity.custom_device}
-| fieldsAdd circuit_name = entityName(dt.entity.custom_device)
-| sort arrayAvg(bits_out) desc
-| limit 20
+3️⃣ NIC Retransmission Out (sent packets retransmission)
+builtin:host.net.nic.retransmission
+:filter(and(or(in("dt.entity.host",entitySelector("type(host)",tag(~"APMID:APP00005497~"))))))
+:parents:splitBy("dt.entity.host")
+:sort(value(auto,descending))
