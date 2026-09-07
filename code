@@ -1,21 +1,25 @@
-processes
 fetch dt.davis.events, from:-30d
-| filter event.type == "PROCESS_RESTART"
+| filter event.category == "INFO"
 | expand affected_entity_ids
 
 | lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | lookup [
-        fetch dt.entity.host
-        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-        | fields id
-      ], sourceField:h, lookupField:id, prefix:"hh_"
-    | filter isNotNull(hh_id)
-    | fields id, pgi_name = entity.name
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"proc_"
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host_"
 
-| filter isNotNull(proc_id)
-| fields event.name, proc_pgi_name, event.start
-| sort event.start desc
-| limit 30
+| filter isNotNull(host_id)
+
+| fieldsAdd `Change Type` =
+    if(event.type == "ESXI_VM_START", "VM Started",
+    else: if(event.type == "ESXI_VM_POWER_OFF", "VM Power Off",
+    else: if(event.type == "ESXI_VM_SHUTDOWN", "VM Shutdown",
+    else: if(event.type == "ESXI_VM_MOTION", "VM Migrated (vMotion)",
+    else: if(event.type == "ESXI_VM_DISCONNECTED", "VM Disconnected",
+    else: if(event.type == "PROCESS_RESTART", "Process Restarted",
+    else: "Other Infrastructure Event")))))))
+
+| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type` }
+| sort day desc
+
+What chang
