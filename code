@@ -1,8 +1,14 @@
 
+Fixed query — lookup runs_on via a separate fetch
 timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
   by:{dt.entity.sql:sql_server_instance}
-| fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| fieldsAdd h = runs_on[dt.entity.host]
+
+| lookup [
+    fetch `dt.entity.sql:sql_server_instance`
+    | fieldsAdd h = runs_on[dt.entity.host]
+    | fields id, h
+  ], sourceField:`dt.entity.sql:sql_server_instance`, lookupField:id, prefix:"inst_"
+
 | lookup [
     fetch dt.entity.host
     | filter in(lower(entity.name), array(
@@ -13,9 +19,11 @@ timeseries blocked = avg(`sql-server.general.processesBlocked`, scalar:true),
         "pwauswifscq04.prd.hcscad.net"
       ))
     | fields id
-  ], sourceField:h, lookupField:id, prefix:"hh_"
+  ], sourceField:inst_h, lookupField:id, prefix:"hh_"
+
 | filter isNotNull(hh_id)
+| fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
 | fields instance_name, blocked
 | sort blocked desc
 
-Regarding Lon
+What changed
