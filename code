@@ -1,52 +1,24 @@
-Tile 1: Regular Asserts
-
-
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries regular_asserts = avg(mongodb.regular_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, regular_asserts = m_regular_asserts, timeframe, interval
-
-
-Tile 2: Warning Asserts
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
+    timeseries regular = avg(mongodb.regular_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"r_"
 | lookup [
-    timeseries warning_asserts = avg(mongodb.warning_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, warning_asserts = m_warning_asserts, timeframe, interval
-
-Tile 3: Message Asserts
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
+    timeseries warning = avg(mongodb.warning_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"w_"
 | lookup [
-    timeseries message_asserts = avg(mongodb.message_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, message_asserts = m_message_asserts, timeframe, interval
-
-Tile 4: User Asserts
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
+    timeseries message = avg(mongodb.message_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"msg_"
 | lookup [
-    timeseries user_asserts = avg(mongodb.user_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, user_asserts = m_user_asserts, timeframe, interval
-
-Tile 5: Rollover Asserts
-
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
+    timeseries user = avg(mongodb.user_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"u_"
 | lookup [
-    timeseries rollover_asserts = avg(mongodb.rollover_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, rollover_asserts = m_rollover_asserts, timeframe, interval
+    timeseries rollover = avg(mongodb.rollover_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"ro_"
+| fields process_name,
+    regular_asserts = round(r_regular, decimals:0),
+    warning_asserts = round(w_warning, decimals:0),
+    message_asserts = round(msg_message, decimals:0),
+    user_asserts = round(u_user, decimals:0),
+    rollover_asserts = round(ro_rollover, decimals:0)
+| sort regular_asserts desc
