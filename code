@@ -1,5 +1,7 @@
-timeseries page_faults_total = avg(mongodb.page_faults), by:{`dt.entity.mongodb:process`}, from:-2h
-| fieldsAdd page_faults_delta = arrayDelta(page_faults_total)
-| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
-    sourceField:`dt.entity.mongodb:process`, lookupField:id, prefix:"p_"
-| fields process_name = p_process_name, page_faults_delta, timeframe, interval
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries resident_mem = avg(mongodb.resident_memory, scalar:true), by:{`dt.entity.mongodb:process`}, from:-15m
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fields process_name, resident_memory_mb = round(m_resident_mem, decimals:0)
+| sort resident_memory_mb desc
