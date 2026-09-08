@@ -1,39 +1,15 @@
-timeseries objects = avg(mongodb.db.objects), by:{dt.entity.mongodb:database}, from:-2h
-| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
-    sourceField:dt.entity.mongodb:database, lookupField:id, prefix:"d_"
-| fields db_name = d_db_name, objects, timeframe, interval
-
-
-timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-2h
-| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
-    sourceField:dt.entity.mongodb:database, lookupField:id, prefix:"d_"
-| fieldsAdd data_size_mb = data_size / 1024 / 1024
-| fields db_name = d_db_name, data_size_mb, timeframe, interval
-
-
-fetch dt.entity.mongodb:database
-| fieldsAdd db_id = id, db_name = entity.name
+fetch dt.entity.mongodb:replicaset
+| fieldsAdd rs_id = id, rs_name = entity.name
 | lookup [
-    timeseries storage_size = avg(mongodb.db.db_storage_size, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
-  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"m_"
-| fields db_name, storage_size_mb = round(m_storage_size / 1024 / 1024, decimals:2)
-| sort storage_size_mb desc
-
-fetch dt.entity.mongodb:database
-| fieldsAdd db_id = id, db_name = entity.name
+    timeseries oplog_size = avg(mongodb.rs.oplog_size, scalar:true), by:{dt.entity.mongodb:replicaset}, from:-2h
+  ], sourceField:rs_id, lookupField:dt.entity.mongodb:replicaset, prefix:"s_"
 | lookup [
-    timeseries index_size = avg(mongodb.db.db_index_size, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
-  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"m_"
-| fields db_name, index_size_mb = round(m_index_size / 1024 / 1024, decimals:2)
-| sort index_size_mb desc
-
-
-
-
-fetch dt.entity.mongodb:database
-| fieldsAdd db_id = id, db_name = entity.name
+    timeseries latest = avg(mongodb.rs.oplog_window, scalar:true, filter: window == "latest"), by:{dt.entity.mongodb:replicaset}, from:-2h
+  ], sourceField:rs_id, lookupField:dt.entity.mongodb:replicaset, prefix:"lt_"
 | lookup [
-    timeseries indexes = avg(mongodb.db.indexes, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
-  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"m_"
-| fields db_name, indexes_count = round(m_indexes, decimals:0)
-| sort indexes_count desc
+    timeseries earliest = avg(mongodb.rs.oplog_window, scalar:true, filter: window == "earliest"), by:{dt.entity.mongodb:replicaset}, from:-2h
+  ], sourceField:rs_id, lookupField:dt.entity.mongodb:replicaset, prefix:"e_"
+| fieldsAdd oplog_window_sec = lt_latest - e_earliest
+| fields rs_name,
+    oplog_size_mb = round(s_oplog_size / 1024 / 1024, decimals:2),
+    oplog_window_hrs = round(oplog_window_sec / 3600, decimals:1)
