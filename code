@@ -1,11 +1,50 @@
-Discovery — find real process-level memory metric keys
-fetch metric.series
-| filter contains(metric.key, "dt.process") and contains(metric.key, "mem")
-| summarize count(), by:{metric.key}
-| sort metric.key asc
+Tile 1 — Disk Read IOPS (per host)
+timeseries read_ops = avg(dt.host.disk.read_ops, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fieldsAdd read_ops = round(read_ops, decimals:1)
+| fields hostname, read_ops
+| sort read_ops desc
 
-🔍 Discovery — find page fault metric keys (process or host level)
-fetch metric.series
-| filter contains(metric.key, "fault")
-| summarize count(), by:{metric.key}
-| sort metric.key asc
+Tile 2 — Disk Write IOPS (per host)
+timeseries write_ops = avg(dt.host.disk.write_ops, scalar:true),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fieldsAdd write_ops = round(write_ops, decimals:1)
+| fields hostname, write_ops
+| sort write_ops desc
+
+If you'd rather see these as trend charts (line/stacked bar over time) instead of a single-value ranked table, drop scalar:true and keep the raw array:
+
+Read IOPS — Trend
+
+timeseries read_ops = avg(dt.host.disk.read_ops),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
+
+
+Write IOPS — Trend
+
+timeseries write_ops = avg(dt.host.disk.write_ops),
+  by:{dt.entity.host},
+  filter: dt.entity.host in [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
+    | fields id
+  ]
+| fieldsAdd hostname = entityName(dt.entity.host)
