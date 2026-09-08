@@ -1,4 +1,5 @@
-fetch metric.series
-| filter metric.key == "mongodb.page_faults"
-| fields metric.key, aggregation.type
-| limit 1
+timeseries page_faults_total = avg(mongodb.page_faults), by:{`dt.entity.mongodb:process`}, from:-2h
+| fieldsAdd page_faults_delta = arrayDelta(page_faults_total)
+| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
+    sourceField:`dt.entity.mongodb:process`, lookupField:id, prefix:"p_"
+| fields process_name = p_process_name, page_faults_delta, timeframe, interval
