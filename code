@@ -3,3 +3,6 @@ timeseries time_acquired_total = avg(mongodb.locks.global_time_acquire), by:{`dt
 | lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
     sourceField:`dt.entity.mongodb:process`, lookupField:id, prefix:"p_"
 | fields process_name = p_process_name, time_acquired_delta_us, timeframe, interval
+
+
+Lock Wait Time – Rate of Change (µs)
