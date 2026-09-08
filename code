@@ -11,3 +11,5 @@ fetch dt.entity.mongodb:replicaset
     earliest_raw = e_earliest,
     latest_as_date = e_earliest,
     delta_seconds = lt_latest - e_earliest
+
+;
