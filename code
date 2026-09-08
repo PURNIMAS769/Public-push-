@@ -1,24 +1,26 @@
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries regular = avg(mongodb.regular_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"r_"
+    timeseries pages_requested = avg(mongodb.cache.pages_requested, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"pr_"
 | lookup [
-    timeseries warning = avg(mongodb.warning_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"w_"
-| lookup [
-    timeseries message = avg(mongodb.message_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"msg_"
-| lookup [
-    timeseries user = avg(mongodb.user_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"u_"
-| lookup [
-    timeseries rollover = avg(mongodb.rollover_asserts2.count, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"ro_"
+    timeseries pages_read = avg(mongodb.cache.pages_read, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"prd_"
 | fields process_name,
-    regular_asserts = round(r_regular, decimals:0),
-    warning_asserts = round(w_warning, decimals:0),
-    message_asserts = round(msg_message, decimals:0),
-    user_asserts = round(u_user, decimals:0),
-    rollover_asserts = round(ro_rollover, decimals:0)
-| sort regular_asserts desc
+    pages_requested = round(pr_pages_requested, decimals:0),
+    pages_read = round(prd_pages_read, decimals:0)
+| sort pages_requested desc
+
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries pages_requested = avg(mongodb.cache.pages_requested, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"pr_"
+| lookup [
+    timeseries pages_read = avg(mongodb.cache.pages_read, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"prd_"
+| filter pr_pages_requested > 0
+| fieldsAdd cache_hit_ratio_pct = round((1 - (prd_pages_read / pr_pages_requested)) * 100, decimals:2)
+| fields process_name, cache_hit_ratio_pct
+| sort cache_hit_ratio_pct asc
