@@ -1,9 +1,11 @@
-timeseries latest = avg(mongodb.rs.oplog_window, filter: window == "latest"), by:{dt.entity.mongodb:replicaset}, from:-6h
-| lookup [
-    timeseries earliest = avg(mongodb.rs.oplog_window, filter: window == "earliest"), by:{dt.entity.mongodb:replicaset}, from:-6h
-  ], sourceField:dt.entity.mongodb:replicaset, lookupField:dt.entity.mongodb:replicaset, prefix:"e_"
-| fieldsAdd window_sec = arrayFor(latest, earliest, (l, e) -> l - e)
-| lookup [ fetch dt.entity.mongodb:replicaset | fields id, rs_name = entity.name ],
-    sourceField:dt.entity.mongodb:replicaset, lookupField:id, prefix:"r_"
-| fieldsAdd window_hrs = arrayFor(window_sec, (w) -> w / 3600)
-| fields rs_name = r_rs_name, window_hrs, timeframe, interval
+timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-30d
+| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
+    sourceField:dt.entity.mongodb:database, lookupField:id, prefix:"d_"
+| fieldsAdd data_size_mb = data_size / 1024 / 1024
+| fields db_name = d_db_name, data_size_mb, timeframe, interval
+
+
+timeseries current_connections = avg(mongodb.current_connections), by:{`dt.entity.mongodb:process`}, from:-30d
+| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
+    sourceField:`dt.entity.mongodb:process`, lookupField:id, prefix:"p_"
+| fields process_name = p_process_name, current_connections, timeframe, interval
