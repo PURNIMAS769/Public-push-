@@ -1,7 +1,7 @@
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries resident_mem = avg(mongodb.resident_memory, scalar:true), by:{`dt.entity.mongodb:process`}, from:-15m
+    timeseries resident_mem = avg(mongodb.resident_memory), by:{`dt.entity.mongodb:process`}, from:-2h
   ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fields process_name, resident_memory_mb = round(m_resident_mem, decimals:0)
-| sort resident_memory_mb desc
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields process_name, resident_memory_mb = m_resident_mem, timeframe, interval
