@@ -1,16 +1,6 @@
-Discovery — dimensions available on IIS metrics
-fetch metric.series
-| filter metric.key == "dt.runtime.iis.requests"
-| fields metric.key, dimensions
-| limit 5
-
-
-Also worth checking directly with a timeseries call to see what by: grouping is possible:
-
-timeseries requests = sum(dt.runtime.iis.requests), by:{dt.entity.host}
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fields hostname, requests
-| limit 10
-
-
-What to chec
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries virtual_mem = avg(mongodb.virtual_memory, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fields process_name, virtual_memory_mb = round(m_virtual_mem, decimals:0)
