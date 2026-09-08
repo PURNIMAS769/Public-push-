@@ -1,42 +1,5 @@
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries current_queue = avg(mongodb.locks.global_current_queue, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fields process_name, current_global_queue = round(m_current_queue, decimals:0)
-| sort current_global_queue desc
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries acquired_locks = avg(mongodb.locks.global_acquire, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fields process_name, global_acquired_locks = round(m_acquired_locks, decimals:0)
-| sort global_acquired_locks desc
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries acquire_waits = avg(mongodb.locks.global_acquire_wait, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fields process_name, global_acquire_waits = round(m_acquire_waits, decimals:0)
-| sort global_acquire_waits desc
-
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries time_acquired = avg(mongodb.locks.global_time_acquire, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fields process_name, global_time_acquired_us = round(m_time_acquired, decimals:0)
-| sort global_time_acquired_us desc
-
-
-fetch `dt.entity.mongodb:process`
-| fieldsAdd process_id = id, process_name = entity.name
-| lookup [
-    timeseries total_time = avg(mongodb.locks.global_total_time, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
-| fields process_name, global_total_time_days = round(m_total_time / 1000000 / 86400, decimals:1)
-| sort global_total_time_days desc
-
+timeseries time_acquired_total = avg(mongodb.locks.global_time_acquire), by:{`dt.entity.mongodb:process`}, from:-2h
+| fieldsAdd time_acquired_delta_us = arrayDelta(time_acquired_total)
+| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
+    sourceField:`dt.entity.mongodb:process`, lookupField:id, prefix:"p_"
+| fields process_name = p_process_name, time_acquired_delta_us, timeframe, interval
