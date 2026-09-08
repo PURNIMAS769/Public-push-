@@ -1,11 +1,5 @@
-timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-30d
-| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
-    sourceField:dt.entity.mongodb:database, lookupField:id, prefix:"d_"
-| fieldsAdd data_size_mb = data_size / 1024 / 1024
-| fields db_name = d_db_name, data_size_mb, timeframe, interval
-
-
-timeseries current_connections = avg(mongodb.current_connections), by:{`dt.entity.mongodb:process`}, from:-30d
-| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
-    sourceField:`dt.entity.mongodb:process`, lookupField:id, prefix:"p_"
-| fields process_name = p_process_name, current_connections, timeframe, interval
+fetch metric.series
+| filter metric.key == "mongodb.db.db_data_size"
+| fieldsAdd dims = dimensions
+| fields metric.key, dims
+| limit 10
