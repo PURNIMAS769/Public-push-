@@ -1,61 +1,16 @@
-Angle 1 — Check for raw distributed traces (spans) on SCCM hosts
-
-Services are normally built from spans — so even if the service entity wasn't created, raw span data might still exist and could be queried directly.
-
-fetch spans, from:-24h
-| filter isNotNull(dt.entity.process_group_instance)
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | lookup [
-        fetch dt.entity.host
-        | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-        | fields id
-      ], sourceField:h, lookupField:id, prefix:"hh_"
-    | filter isNotNull(hh_id)
-    | fields id
-  ], sourceField:dt.entity.process_group_instance, lookupField:id, prefix:"proc_"
-| filter isNotNull(proc_id)
-| fields span.name, duration, request.is_failed
-| limit 20
-
-Angle 2 — Check for a Process Group (not instance) level service association
-
-Sometimes the service link exists at the process_group level rather than the specific instance:
-
-fetch dt.entity.process_group
-| filter contains(entity.name, "w3wp") or contains(entity.name, "sitecomp") or contains(entity.name, "sms")
-| fields id, pg_name = entity.name
-
-Angle 3 — Check for IIS-specific extension metrics (a different namespace entirely)
-
-IIS has its own dedicated metric set separate from generic service metrics — worth checking if this exists instead:
-
+Discovery — dimensions available on IIS metrics
 fetch metric.series
-| filter contains(metric.key, "iis") or contains(metric.key, "aspnet") or contains(metric.key, "w3wp")
-| summarize count(), by:{metric.key}
-| sort metric.key asc
+| filter metric.key == "dt.runtime.iis.requests"
+| fields metric.key, dimensions
+| limit 5
 
-Angle 4 — Check network connection/session metrics (a proxy for request activity)
 
-We found dt.process.network.sessions.reset_local earlier in your own metric catalog — this and related session metrics won't give response time, but could approximate connection volume/health as a rough proxy:
+Also worth checking directly with a timeseries call to see what by: grouping is possible:
 
-fetch metric.series
-| filter contains(metric.key, "network.sessions") or contains(metric.key, "network.connections")
-| summarize count(), by:{metric.key}
-| sort metric.key asc
+timeseries requests = sum(dt.runtime.iis.requests), by:{dt.entity.host}
+| fieldsAdd hostname = entityName(dt.entity.host)
+| fields hostname, requests
+| limit 10
 
-Angle 5 — Check if IIS logs are being ingested (W3C log format has response time/status built in)
 
-If OneAgent or a log-forwarder is shipping IIS logs, request-level data (URL, status code, response time) would be sitting right there in log format, queryable without any service entity at all:
-
-fetch logs, from:-24h
-| filter contains(log.source, "iis") or contains(log.source, "w3wp") or contains(log.source, "u_ex")
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:dt.entity.host, lookupField:id, prefix:"hh_"
-| filter isNotNull(hh_id)
-| fields content, log.source
-| limit 20
+What to chec
