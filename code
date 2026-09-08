@@ -1,7 +1,7 @@
-han guess:
-
+Fixed query — expand the array before joining
 fetch dt.entity.service
 | fieldsAdd h = runs_on[dt.entity.process_group_instance]
+| expand h
 | lookup [
     fetch dt.entity.process_group_instance
     | fieldsAdd hh = runs_on[dt.entity.host]
@@ -15,3 +15,9 @@ fetch dt.entity.service
   ], sourceField:h, lookupField:id, prefix:"proc_"
 | filter isNotNull(proc_id)
 | fields id, service_name = entity.name
+
+
+
+fetch dt.entity.service
+| fields id, service_name = entity.name
+| limit 10
