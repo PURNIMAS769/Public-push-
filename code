@@ -1,26 +1,42 @@
+ 
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries pages_requested = avg(mongodb.cache.pages_requested, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"pr_"
-| lookup [
-    timeseries pages_read = avg(mongodb.cache.pages_read, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"prd_"
-| fields process_name,
-    pages_requested = round(pr_pages_requested, decimals:0),
-    pages_read = round(prd_pages_read, decimals:0)
-| sort pages_requested desc
+    timeseries current_queue = avg(mongodb.locks.global_current_queue, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fields process_name, current_global_queue = round(m_current_queue, decimals:0)
+| sort current_global_queue desc
 
 
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries pages_requested = avg(mongodb.cache.pages_requested, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"pr_"
+    timeseries acquired_locks = avg(mongodb.locks.global_acquire, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fields process_name, global_acquired_locks = round(m_acquired_locks, decimals:0)
+| sort global_acquired_locks desc
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries pages_read = avg(mongodb.cache.pages_read, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
-  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"prd_"
-| filter pr_pages_requested > 0
-| fieldsAdd cache_hit_ratio_pct = round((1 - (prd_pages_read / pr_pages_requested)) * 100, decimals:2)
-| fields process_name, cache_hit_ratio_pct
-| sort cache_hit_ratio_pct asc
+    timeseries acquire_waits = avg(mongodb.locks.global_acquire_wait, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fields process_name, global_acquire_waits = round(m_acquire_waits, decimals:0)
+| sort global_acquire_waits desc
+
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries time_acquired = avg(mongodb.locks.global_time_acquire, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fields process_name, global_time_acquired_us = round(m_time_acquired, decimals:0)
+| sort global_time_acquired_us desc
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries total_time = avg(mongodb.locks.global_total_time, scalar:true), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fields process_name, global_total_time_us = round(m_total_time, decimals:0)
+| sort global_total_time_us desc
