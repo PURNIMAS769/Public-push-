@@ -1,16 +1,14 @@
-// Step 1: get the current active database list (our validated 673)
-timeseries has_data = sum(mongodb.db.objects), by:{dt.entity.mongodb:database}, from:-2h
-| summarize count(), by:{dt.entity.mongodb:database}
-| fieldsAdd current_db_id = `dt.entity.mongodb:database`
+// Step 1: get the current active process list (our confirmed 16)
+timeseries has_data = avg(mongodb.uptime), by:{`dt.entity.mongodb:process`}, from:-2h
+| summarize count(), by:{`dt.entity.mongodb:process`}
+| fieldsAdd current_proc_id = `dt.entity.mongodb:process`
 
 // Step 2: pull 30-day trend, but only for those active IDs
 | join [
-    timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-30d
-  ], kind:inner, on: {left[current_db_id] == right[`dt.entity.mongodb:database`]}, prefix:"t."
+    timeseries current_connections = avg(mongodb.current_connections), by:{`dt.entity.mongodb:process`}, from:-30d
+  ], kind:inner, on: {left[current_proc_id] == right[`dt.entity.mongodb:process`]}, prefix:"t."
 
-| fieldsAdd data_size_mb = t.data_size[] / 1024 / 1024
+| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
+    sourceField:current_proc_id, lookupField:id, prefix:"p_"
 
-| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
-    sourceField:current_db_id, lookupField:id, prefix:"d_"
-
-| fields db_name = d_db_name, data_size_mb, timeframe = t.timeframe, interval = t.interval
+| fields process_name = p_process_name, current_connections = t.current_connections, timeframe = t.timeframe, interval = t.interval
