@@ -1,8 +1,12 @@
-timeseries time_acquired_total = avg(mongodb.locks.global_time_acquire), by:{`dt.entity.mongodb:process`}, from:-2h
-| fieldsAdd time_acquired_delta_us = arrayDelta(time_acquired_total)
-| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
-    sourceField:`dt.entity.mongodb:process`, lookupField:id, prefix:"p_"
-| fields process_name = p_process_name, time_acquired_delta_us, timeframe, interval
-
-
-Lock Wait Time – Rate of Change (µs)
+fetch dt.entity.mongodb:database
+| fieldsAdd db_id = id, db_name = entity.name
+| lookup [
+    timeseries objects = avg(mongodb.db.objects, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
+  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"o_"
+| lookup [
+    timeseries data_size = avg(mongodb.db.db_data_size, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
+  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"d_"
+| fields db_name,
+    objects = round(o_objects, decimals:0),
+    data_size_mb = round(d_data_size / 1024 / 1024, decimals:2)
+| sort data_size_mb desc
