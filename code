@@ -1,6 +1,11 @@
-Section 10: MongoDB Replica Set
-"MongoDB Replica Sets" (table) —.
-"Oplog Size (Trend, MB)" ge.
-Section 11: Predictive & AI Insights
-"Storage Exhaustion Forecast" (left panel) — showing db_name in its results table (e.g., "opsmgrdb - platformdiagnostics", "opsmgrdb - mmsdbrrd-raw-dbs-high...") — this is the database-scoped forecast tile.
-"Connection Saturation Forecast" (right panel) — showing process_name in its results table (e.g., "mpplnp on twausImongo06...", "saplnp on twausImongo05...", "backupdb on twausImongo06...") — this is the process-scoped forecast tile.
+Discovery — find real process-level memory metric keys
+fetch metric.series
+| filter contains(metric.key, "dt.process") and contains(metric.key, "mem")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
+
+🔍 Discovery — find page fault metric keys (process or host level)
+fetch metric.series
+| filter contains(metric.key, "fault")
+| summarize count(), by:{metric.key}
+| sort metric.key asc
