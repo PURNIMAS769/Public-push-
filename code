@@ -1,2 +1,14 @@
-fetch dt.entity.mongodb:database, from:-30d
-| summarize by_id = countDistinct(id), by_name = countDistinct(entity.name)
+// Step 1: get the current active database list (our validated 673)
+timeseries has_data = sum(mongodb.db.objects), by:{dt.entity.mongodb:database}, from:-2h
+| summarize by:{dt.entity.mongodb:database}
+| fieldsAdd current_db_id = dt.entity.mongodb:database
+
+// Step 2: pull 30-day trend, but only for those active IDs
+| join [
+    timeseries data_size = avg(mongodb.db.db_data_size) / 1024 / 1024, by:{dt.entity.mongodb:database}, from:-30d
+  ], kind:inner, on: {current_db_id == dt.entity.mongodb:database}, prefix:"t."
+
+| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
+    sourceField:current_db_id, lookupField:id, prefix:"d_"
+
+| fields db_name = d_db_name, data_size_mb = t.data_size, timeframe = t.timeframe, interval = t.interval
