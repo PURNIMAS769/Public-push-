@@ -1,26 +1,5 @@
-fetch dt.entity.mongodb:replicaset
-| fieldsAdd rs_id = id, rs_name = entity.name
-| lookup [
-    timeseries oplog_size = avg(mongodb.rs.oplog_size, scalar:true), by:{dt.entity.mongodb:replicaset}, from:-2h
-  ], sourceField:rs_id, lookupField:dt.entity.mongodb:replicaset, prefix:"s_"
-| lookup [
-    timeseries latest = avg(mongodb.rs.oplog_window, scalar:true, filter: window == "latest"), by:{dt.entity.mongodb:replicaset}, from:-2h
-  ], sourceField:rs_id, lookupField:dt.entity.mongodb:replicaset, prefix:"lt_"
-| lookup [
-    timeseries earliest = avg(mongodb.rs.oplog_window, scalar:true, filter: window == "earliest"), by:{dt.entity.mongodb:replicaset}, from:-2h
-  ], sourceField:rs_id, lookupField:dt.entity.mongodb:replicaset, prefix:"e_"
-| fieldsAdd oplog_window_sec = lt_latest - e_earliest
-
-// — Readable breakdown: years / days / hours —
-| fieldsAdd total_hours = oplog_window_sec / 3600
-| fieldsAdd years = floor(total_hours / 8760),
-            days  = floor((total_hours % 8760) / 24),
-            hrs   = round(total_hours % 24, decimals:1)
-| fieldsAdd oplog_window_readable =
-    if(years > 0, concat(toString(years), "y ", toString(days), "d ", toString(hrs), "h"),
-    else: if(days > 0, concat(toString(days), "d ", toString(hrs), "h"),
-    else: concat(toString(hrs), "h")))
-
-| fields rs_name,
-    oplog_size_mb = round(s_oplog_size / 1024 / 1024, decimals:2),
-    oplog_window_readable
+timeseries oplog_size = avg(mongodb.rs.oplog_size), by:{dt.entity.mongodb:replicaset}, from:-2h
+| lookup [ fetch dt.entity.mongodb:replicaset | fields id, rs_name = entity.name ],
+    sourceField:dt.entity.mongodb:replicaset, lookupField:id, prefix:"r_"
+| fieldsAdd oplog_size_mb = oplog_size / 1024 / 1024
+| fields rs_name = r_rs_name, oplog_size_mb, timeframe, interval
