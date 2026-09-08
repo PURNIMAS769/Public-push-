@@ -1,7 +1,52 @@
+Tile 1: Regular Asserts
+
+
 fetch `dt.entity.mongodb:process`
 | fieldsAdd process_id = id, process_name = entity.name
 | lookup [
-    timeseries resident_mem = avg(mongodb.resident_memory), by:{`dt.entity.mongodb:process`}, from:-2h
+    timeseries regular_asserts = avg(mongodb.regular_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
   ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
 | fieldsAdd interval = m_interval, timeframe = m_timeframe
-| fields process_name, resident_memory_mb = m_resident_mem, timeframe, interval
+| fields process_name, regular_asserts = m_regular_asserts, timeframe, interval
+
+
+Tile 2: Warning Asserts
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries warning_asserts = avg(mongodb.warning_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields process_name, warning_asserts = m_warning_asserts, timeframe, interval
+
+Tile 3: Message Asserts
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries message_asserts = avg(mongodb.message_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields process_name, message_asserts = m_message_asserts, timeframe, interval
+
+Tile 4: User Asserts
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries user_asserts = avg(mongodb.user_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields process_name, user_asserts = m_user_asserts, timeframe, interval
+
+Tile 5: Rollover Asserts
+
+
+fetch `dt.entity.mongodb:process`
+| fieldsAdd process_id = id, process_name = entity.name
+| lookup [
+    timeseries rollover_asserts = avg(mongodb.rollover_asserts2.count), by:{`dt.entity.mongodb:process`}, from:-2h
+  ], sourceField:process_id, lookupField:`dt.entity.mongodb:process`, prefix:"m_"
+| fieldsAdd interval = m_interval, timeframe = m_timeframe
+| fields process_name, rollover_asserts = m_rollover_asserts, timeframe, interval
