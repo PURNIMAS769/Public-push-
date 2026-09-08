@@ -1,5 +1,9 @@
-timeseries oplog_size = avg(mongodb.rs.oplog_size), by:{dt.entity.mongodb:replicaset}, from:-2h
+timeseries latest = avg(mongodb.rs.oplog_window, filter: window == "latest"), by:{dt.entity.mongodb:replicaset}, from:-6h
+| lookup [
+    timeseries earliest = avg(mongodb.rs.oplog_window, filter: window == "earliest"), by:{dt.entity.mongodb:replicaset}, from:-6h
+  ], sourceField:dt.entity.mongodb:replicaset, lookupField:dt.entity.mongodb:replicaset, prefix:"e_"
+| fieldsAdd window_sec = arrayFor(latest, earliest, (l, e) -> l - e)
 | lookup [ fetch dt.entity.mongodb:replicaset | fields id, rs_name = entity.name ],
     sourceField:dt.entity.mongodb:replicaset, lookupField:id, prefix:"r_"
-| fieldsAdd oplog_size_mb = oplog_size / 1024 / 1024
-| fields rs_name = r_rs_name, oplog_size_mb, timeframe, interval
+| fieldsAdd window_hrs = arrayFor(window_sec, (w) -> w / 3600)
+| fields rs_name = r_rs_name, window_hrs, timeframe, interval
