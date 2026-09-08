@@ -1,12 +1,39 @@
+timeseries objects = avg(mongodb.db.objects), by:{dt.entity.mongodb:database}, from:-2h
+| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
+    sourceField:dt.entity.mongodb:database, lookupField:id, prefix:"d_"
+| fields db_name = d_db_name, objects, timeframe, interval
+
+
+timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-2h
+| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
+    sourceField:dt.entity.mongodb:database, lookupField:id, prefix:"d_"
+| fieldsAdd data_size_mb = data_size / 1024 / 1024
+| fields db_name = d_db_name, data_size_mb, timeframe, interval
+
+
 fetch dt.entity.mongodb:database
 | fieldsAdd db_id = id, db_name = entity.name
 | lookup [
-    timeseries objects = avg(mongodb.db.objects, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
-  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"o_"
+    timeseries storage_size = avg(mongodb.db.db_storage_size, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
+  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"m_"
+| fields db_name, storage_size_mb = round(m_storage_size / 1024 / 1024, decimals:2)
+| sort storage_size_mb desc
+
+fetch dt.entity.mongodb:database
+| fieldsAdd db_id = id, db_name = entity.name
 | lookup [
-    timeseries data_size = avg(mongodb.db.db_data_size, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
-  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"d_"
-| fields db_name,
-    objects = round(o_objects, decimals:0),
-    data_size_mb = round(d_data_size / 1024 / 1024, decimals:2)
-| sort data_size_mb desc
+    timeseries index_size = avg(mongodb.db.db_index_size, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
+  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"m_"
+| fields db_name, index_size_mb = round(m_index_size / 1024 / 1024, decimals:2)
+| sort index_size_mb desc
+
+
+
+
+fetch dt.entity.mongodb:database
+| fieldsAdd db_id = id, db_name = entity.name
+| lookup [
+    timeseries indexes = avg(mongodb.db.indexes, scalar:true), by:{dt.entity.mongodb:database}, from:-2h
+  ], sourceField:db_id, lookupField:dt.entity.mongodb:database, prefix:"m_"
+| fields db_name, indexes_count = round(m_indexes, decimals:0)
+| sort indexes_count desc
