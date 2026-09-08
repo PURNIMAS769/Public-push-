@@ -1,14 +1,6 @@
-// Step 1: get the current active process list (our confirmed 16)
-timeseries has_data = avg(mongodb.uptime), by:{`dt.entity.mongodb:process`}, from:-2h
-| summarize count(), by:{`dt.entity.mongodb:process`}
-| fieldsAdd current_proc_id = `dt.entity.mongodb:process`
-
-// Step 2: pull 30-day trend, but only for those active IDs
-| join [
-    timeseries current_connections = avg(mongodb.current_connections), by:{`dt.entity.mongodb:process`}, from:-30d
-  ], kind:inner, on: {left[current_proc_id] == right[`dt.entity.mongodb:process`]}, prefix:"t."
-
-| lookup [ fetch `dt.entity.mongodb:process` | fields id, process_name = entity.name ],
-    sourceField:current_proc_id, lookupField:id, prefix:"p_"
-
-| fields process_name = p_process_name, current_connections = t.current_connections, timeframe = t.timeframe, interval = t.interval
+Section 10: MongoDB Replica Set
+"MongoDB Replica Sets" (table) —.
+"Oplog Size (Trend, MB)" ge.
+Section 11: Predictive & AI Insights
+"Storage Exhaustion Forecast" (left panel) — showing db_name in its results table (e.g., "opsmgrdb - platformdiagnostics", "opsmgrdb - mmsdbrrd-raw-dbs-high...") — this is the database-scoped forecast tile.
+"Connection Saturation Forecast" (right panel) — showing process_name in its results table (e.g., "mpplnp on twausImongo06...", "saplnp on twausImongo05...", "backupdb on twausImongo06...") — this is the process-scoped forecast tile.
