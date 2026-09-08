@@ -1,5 +1,2 @@
-fetch metric.series
-| filter metric.key == "mongodb.db.db_data_size"
-| fieldsAdd dims = dimensions
-| fields metric.key, dims
-| limit 10
+timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-30d
+| summarize count()
