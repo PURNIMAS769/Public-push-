@@ -6,7 +6,7 @@ timeseries has_data = sum(mongodb.db.objects), by:{dt.entity.mongodb:database}, 
 // Step 2: pull 30-day trend, but only for those active IDs
 | join [
     timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-30d
-  ], kind:inner, on: {current_db_id == `dt.entity.mongodb:database`}, prefix:"t."
+  ], kind:inner, on: {left[current_db_id] == right[`dt.entity.mongodb:database`]}, prefix:"t."
 
 | fieldsAdd data_size_mb = t.data_size[] / 1024 / 1024
 
