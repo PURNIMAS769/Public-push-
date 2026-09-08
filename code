@@ -1,2 +1,2 @@
-timeseries data_size = avg(mongodb.db.db_data_size), by:{dt.entity.mongodb:database}, from:-30d
-| summarize count()
+fetch dt.entity.mongodb:database, from:-30d
+| summarize by_id = countDistinct(id), by_name = countDistinct(entity.name)
