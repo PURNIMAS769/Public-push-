@@ -1,35 +1,28 @@
-fetch `dt.entity.sql:db2_host`
-| fields id, host_name = entity.name
-| filter isNotNull(host_name)
-| summarize count(), by:{host_name}
+fetch dt.entity.host
+| expand tags
+| filter toString(tags) == "MongoDB_Supported"
+| summarize count(), by:{ host_name = entity.name }
 | fields host_name
 | sort host_name asc
 
-
-fetch `dt.entity.sql:db2_instance`
-| fields id, instance_name = entity.name
-| filter isNotNull(instance_name)
-| summarize count(), by:{instance_name}
-| fields instance_name
-| sort instance_name asc
+fetch `dt.entity.mongodb:process`
+| summarize count(), by:{ process_name = entity.name }
+| fields process_name
+| sort process_name asc
 
 
-
-fetch `dt.entity.sql:db2_database_member`
-| fields id, member_name = entity.name
-| filter isNotNull(member_name)
-| summarize count(), by:{member_name}
-| fields member_name
-| sort member_name asc
+fetch dt.entity.mongodb:replicaset
+| summarize count(), by:{ rs_name = entity.name }
+| fields rs_name
+| sort rs_name asc
 
 
 | filter in(host_name, array($db2_host))
 
 
-fetch metric.series
-| filter metric.key == "db2.hadr_state"
-| fieldsAdd replica_pair = concat(primary_instance, " ↔ ", standby_instance)
-| filter isNotNull(replica_pair)
-| summarize count(), by:{replica_pair}
-| fields replica_pair
-| sort replica_pair asc
+timeseries series = sum(mongodb.db.objects), by:{dt.entity.mongodb:database}
+| lookup [ fetch dt.entity.mongodb:database | fields id, db_name = entity.name ],
+    sourceField:dt.entity.mongodb:database, lookupField:id, prefix:"d_"
+| summarize count(), by:{ db_name = d_db_name }
+| fields db_name
+| sort db_name asc
