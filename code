@@ -1,50 +1,33 @@
-Tile 1 — Disk Read IOPS (per host)
-timeseries read_ops = avg(dt.host.disk.read_ops, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd read_ops = round(read_ops, decimals:1)
-| fields hostname, read_ops
-| sort read_ops desc
-
-Tile 2 — Disk Write IOPS (per host)
-timeseries write_ops = avg(dt.host.disk.write_ops, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fieldsAdd write_ops = round(write_ops, decimals:1)
-| fields hostname, write_ops
-| sort write_ops desc
-
-If you'd rather see these as trend charts (line/stacked bar over time) instead of a single-value ranked table, drop scalar:true and keep the raw array:
-
-Read IOPS — Trend
-
-timeseries read_ops = avg(dt.host.disk.read_ops),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
+fetch `dt.entity.sql:db2_host`
+| fields id, host_name = entity.name
+| filter isNotNull(host_name)
+| summarize count(), by:{host_name}
+| fields host_name
+| sort host_name asc
 
 
-Write IOPS — Trend
+fetch `dt.entity.sql:db2_instance`
+| fields id, instance_name = entity.name
+| filter isNotNull(instance_name)
+| summarize count(), by:{instance_name}
+| fields instance_name
+| sort instance_name asc
 
-timeseries write_ops = avg(dt.host.disk.write_ops),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
+
+
+fetch `dt.entity.sql:db2_database_member`
+| fields id, member_name = entity.name
+| filter isNotNull(member_name)
+| summarize count(), by:{member_name}
+| fields member_name
+| sort member_name asc
+
+
+
+fetch metric.series
+| filter metric.key == "db2.hadr_state"
+| fieldsAdd replica_pair = concat(primary_instance, " ↔ ", standby_instance)
+| filter isNotNull(replica_pair)
+| summarize count(), by:{replica_pair}
+| fields replica_pair
+| sort replica_pair asc
