@@ -23,6 +23,8 @@ fetch `dt.entity.sql:db2_database_member`
 | sort member_name asc
 
 
+| filter in(host_name, array($db2_host))
+
 
 fetch metric.series
 | filter metric.key == "db2.hadr_state"
