@@ -1,65 +1,33 @@
-Statement Type Mix — Reads vs Writes
-
-timeseries {
-  select_count = avg(mysql.statements.select.count),
-  insert_count = avg(mysql.statements.insert.count),
-  update_count = avg(mysql.statements.update.count),
-  delete_count = avg(mysql.statements.delete.count)
-}, by: { device.name }
-| fields device.name, select_count, insert_count, update_count, delete_count
-| sort device.name asc
-
-Multi-row Statement Volume (bulk operations)
-
-timeseries {
-  update_multi = avg(mysql.statements.update_multi.count),
-  delete_multi = avg(mysql.statements.delete_multi.count),
-  insert_select = avg(mysql.statements.insert_select.count),
-  replace_select = avg(mysql.statements.replace_select.count)
-}, by: { device.name }
-| fields device.name, update_multi, delete_multi, insert_select, replace_select
-| sort device.name asc
-
-
-Commit vs Rollback Rate
-
-timeseries {
-  commit_count = avg(mysql.statements.commit.count),
-  rollback_count = avg(mysql.statements.rollback.count)
-}, by: { device.name }
-| fields device.name, commit_count, rollback_count
-| sort device.name asc
-
-
-Statement Execution Rate (overall throughput)
-timeseries execute_count = avg(mysql.statements.execute.count), by: { device.name }
-| fields device.name, execute_count
-| sort device.name asc
-
-
-Tile 5: Read/Write Ratio (derived, single value per instance)
-
-timeseries {
-  reads = avg(mysql.statements.select.count, scalar:true),
-  writes_insert = avg(mysql.statements.insert.count, scalar:true),
-  writes_update = avg(mysql.statements.update.count, scalar:true),
-  writes_delete = avg(mysql.statements.delete.count, scalar:true)
-}, by: { device.name }
-| fieldsAdd writes = writes_insert + writes_update + writes_delete
-| fieldsAdd read_write_ratio = round(reads / writes, decimals:2)
-| fields device.name, reads, writes, read_write_ratio
-| sort device.name asc
-
-Database Size 
-
-timeseries db_size = avg(mysql.databases.size, scalar:true), by: { device.name, db.name }
-| fieldsAdd db_size_gb = round(db_size / 1024 / 1024 / 1024, decimals:2)
-| fields device.name, db.name, db_size_gb
-| sort db_size_gb desc
-| limit 20
-
-Database Size Trend
-
-timeseries db_size = avg(mysql.databases.size), by: { device.name, db.name }, from: -7d
-| fieldsAdd db_size_gb = arrayMap(db_size, size -> round(size / 1024 / 1024 / 1024, decimals:2))
-| fields device.name, db.name, db_size_gb, timeframe, interval
+fetch dt.entity.host
+| join [
+    fetch metric.series
+    | filter metric.key == "mysql.global_status.availability"
+    | fieldsAdd instance = device.name
+    | fields instance
+    | dedup instance
+  ], kind: inner, on: {left[entity.name] == right[instance]}, fields: { instance }
+| fieldsAdd pg_ids = runs[dt.entity.process_group]
+| fields id, entity.name, pg_ids
+| expand pg_ids
+| join [
+    fetch dt.entity.process_group
+    | fieldsAdd pgi_ids = instantiates[dt.entity.process_group_instance]
+    | fields id, pgi_ids
+  ], kind: inner, on: {left[pg_ids] == right[id]}, fields: { pgi_ids }
+| expand pgi_ids
+| fields entity.name, check_id = pgi_ids
+| join [
+    fetch dt.davis.events
+    | filter in(event.type, {"DEPLOYMENT_CHANGED_CHANGE", "DEPLOYMENT_CHANGED_NEW",
+        "DEPLOYMENT_CHANGED_REMOVED", "METRIC_CHANGEPOINT"})
+    | expand affected_entity_ids
+    | fieldsAdd change_type = event.type, change_name = event.name, change_time = event.start
+    | fieldsKeep affected_entity_ids, change_type, change_name, change_time
+  ], kind: inner, on: {left[check_id] == right[affected_entity_ids]}, prefix: "c."
+| fieldsAdd change_type_readable =
+    if(c.change_type == "DEPLOYMENT_CHANGED_CHANGE", "Config/Deployment Changed",
+    else:if(c.change_type == "DEPLOYMENT_CHANGED_NEW", "New Deployment",
+    else:if(c.change_type == "DEPLOYMENT_CHANGED_REMOVED", "Deployment Removed",
+    else:if(c.change_type == "METRIC_CHANGEPOINT", "Metric Shift", else: c.change_type))))
+| fields host_name = entity.name, change_type_readable, c.change_name, c.change_time
+| sort c.change_time desc
