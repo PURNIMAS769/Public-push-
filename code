@@ -1,3 +1,14 @@
-metrics
-| filter startsWith(metric.key, "mysql.databases")
-| sort metric.key asc
+timeseries {
+  bytes_in = avg(dt.host.net.nic.bytes_rx),
+  bytes_out = avg(dt.host.net.nic.bytes_tx)
+}, by: { dt.entity.host }, from: -2h
+| fieldsAdd instance = entityName(dt.entity.host)
+| join [
+    fetch metric.series
+    | filter metric.key == "mysql.global_status.availability"
+    | fieldsAdd instance = device.name
+    | fields instance
+    | dedup instance
+  ], on: { instance }, kind: inner
+| fields dt.entity.host, instance, bytes_in, bytes_out
+| sort instance asc
