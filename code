@@ -1,20 +1,8 @@
-| lookup [
-    fetch `dt.entity.sql:db2_host`
-    | fields id, host_name = Hostname
-  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:""
-
-
-describe `dt.entity.sql:db2_database_member`
 fetch `dt.entity.sql:db2_database_member`
 | fieldsAdd instance_ref = child_of[`dt.entity.sql:db2_instance`]
 | lookup [
     fetch `dt.entity.sql:db2_instance`
     | fields id, instance_name = entity.name
   ], sourceField:instance_ref, lookupField:id, prefix:"i_"
-| filter isNotNull(i_instance_name)
-| filter in(i_instance_name, array($instance))
-| fieldsAdd member_name = entity.name
-| filter isNotNull(member_name)
-| summarize count(), by:{member_name}
-| fields member_name
-| sort member_name asc
+| filter isNull(i_instance_name)
+| fields entity.name, instance_ref
