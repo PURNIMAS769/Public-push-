@@ -1,14 +1,9 @@
-timeseries {
-  bytes_in = avg(dt.host.net.nic.bytes_rx),
-  bytes_out = avg(dt.host.net.nic.bytes_tx)
-}, by: { dt.entity.host }, from: -2h
-| fieldsAdd instance = entityName(dt.entity.host)
-| join [
-    fetch metric.series
-    | filter metric.key == "mysql.global_status.availability"
-    | fieldsAdd instance = device.name
-    | fields instance
-    | dedup instance
-  ], on: { instance }, kind: inner
-| fields dt.entity.host, instance, bytes_in, bytes_out
-| sort instance asc
+timeseries index_size = avg(mongodb.db.db_index_size), by:{`dt.entity.mongodb:database`}
+| lookup [ fetch `dt.entity.mongodb:database` | fields id, db_name = entity.name ],
+    sourceField:`dt.entity.mongodb:database`, lookupField:id, prefix:"d_"
+| fieldsAdd index_size_mb = round(arrayLast(index_size) / 1024 / 1024, decimals:2)
+| filter isNotNull(index_size_mb)
+| fields db_name = d_db_name, index_size_mb
+| filter isEmpty(array($database)) or in(db_name, array($database))
+| sort index_size_mb desc
+| limit 50
