@@ -1,13 +1,8 @@
-fetch `dt.entity.sql:db2_database_member`
-| fieldsAdd instance_ref = child_of[`dt.entity.sql:db2_instance`]
-| lookup [
-    fetch `dt.entity.sql:db2_instance`
-    | fields id, instance_name = entity.name
-  ], sourceField:instance_ref, lookupField:id, prefix:"i_"
-| filter isNotNull(i_instance_name)
-| filter in($instance, "*") or in(i_instance_name, array($instance))
-| fieldsAdd member_name = entity.name
-| filter isNotNull(member_name)
-| summarize count(), by:{member_name}
-| fields member_name
-| sort member_name asc
+metrics
+| filter contains(metric.key, "mysql")
+| sort metric.key asc
+
+metrics
+| filter contains(metric.key, "mysql")
+| fieldsAdd displayName, unit, description
+| sort metric.key asc
