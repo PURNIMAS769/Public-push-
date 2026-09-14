@@ -1,8 +1,4 @@
-metrics
+fetch metric.series
 | filter contains(metric.key, "mysql")
-| sort metric.key asc
-
-metrics
-| filter contains(metric.key, "mysql")
-| fieldsAdd displayName, unit, description
-| sort metric.key asc
+| summarize seriesCount = count(), by:{metric.key}
+| sort seriesCount desc
