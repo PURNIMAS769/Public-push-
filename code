@@ -1,69 +1,8 @@
-Disk Read/Write IOPS (per MySQL host)
-
-timeseries {
-  read_ops = avg(dt.host.disk.read_ops, scalar:true),
-  write_ops = avg(dt.host.disk.write_ops, scalar:true)
-}, by: { dt.entity.host, dt.entity.disk }, from: -2h
-| fieldsAdd instance = entityName(dt.entity.host)
-| join [
-    fetch metric.series
-    | filter metric.key == "mysql.global_status.availability"
-    | fieldsAdd instance = device.name
-    | fields instance
-    | dedup instance
-  ], on: { instance }, kind: inner
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fields dt.entity.host, instance, disk_name, read_ops, write_ops
-| sort instance asc
+fetch metric.series
+| filter contains(metric.key, "dt.host.net")
+| summarize count(), by: {metric.key}
 
 
-Disk Read/Write Throughput
-
-timeseries {
-  bytes_read = avg(dt.host.disk.bytes_read, scalar:true),
-  bytes_written = avg(dt.host.disk.bytes_written, scalar:true)
-}, by: { dt.entity.host, dt.entity.disk }, from: -2h
-| fieldsAdd instance = entityName(dt.entity.host)
-| join [
-    fetch metric.series
-    | filter metric.key == "mysql.global_status.availability"
-    | fieldsAdd instance = device.name
-    | fields instance
-    | dedup instance
-  ], on: { instance }, kind: inner
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fields dt.entity.host, instance, disk_name, bytes_read, bytes_written
-| sort instance asc
-
-Disk Read/Write Latency
-
-timeseries {
-  read_time = avg(dt.host.disk.read_time, scalar:true),
-  write_time = avg(dt.host.disk.write_time, scalar:true)
-}, by: { dt.entity.host, dt.entity.disk }, from: -2h
-| fieldsAdd instance = entityName(dt.entity.host)
-| join [
-    fetch metric.series
-    | filter metric.key == "mysql.global_status.availability"
-    | fieldsAdd instance = device.name
-    | fields instance
-    | dedup instance
-  ], on: { instance }, kind: inner
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fields dt.entity.host, instance, disk_name, read_time, write_time
-| sort instance asc
-
-
-Disk queue length 
-timeseries queue_length = avg(dt.host.disk.queue_length, scalar:true), by: { dt.entity.host, dt.entity.disk }, from: -2h
-| fieldsAdd instance = entityName(dt.entity.host)
-| join [
-    fetch metric.series
-    | filter metric.key == "mysql.global_status.availability"
-    | fieldsAdd instance = device.name
-    | fields instance
-    | dedup instance
-  ], on: { instance }, kind: inner
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fields dt.entity.host, instance, disk_name, queue_length
-| sort instance asc
+fetch metric.series
+| filter contains(metric.key, "mysql") and (contains(metric.key, "network") or contains(metric.key, "connection") or contains(metric.key, "bytes"))
+| summarize count(), by: {metric.key}
