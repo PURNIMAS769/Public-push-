@@ -1,5 +1,3 @@
 timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
 by:{`dt.entity.sql:db2_instance`}, from:-7d
-| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
-| filter isNotNull(instance)
 | summarize count()
