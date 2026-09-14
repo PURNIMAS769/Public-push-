@@ -1,12 +1,3 @@
-timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
-by:{`dt.entity.sql:db2_instance`}, interval:5m
-| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
-| filter isNotNull(instance)
-| fields timeframe, instance, logical_reads, interval, `dt.entity.sql:db2_instance`
-
-timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
-by:{`dt.entity.sql:db2_instance`}, interval:5m
-| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
-| filter isNotNull(instance)
-| filter in($instance, "*") or in(instance, array($instance))
-| fields timeframe, instance, logical_reads, interval, `dt.entity.sql:db2_instance`
+fetch metric.series
+| filter metric.key == "db2.bp.total_logical_reads.count"
+| summarize count()
