@@ -1,4 +1,7 @@
-timeseries disk_used_pct = avg(dt.host.disk.used.percent, scalar:true), by: { dt.entity.host, dt.entity.disk }, from: -2h
+timeseries {
+  used = avg(dt.host.disk.used, scalar:true),
+  avail = avg(dt.host.disk.avail, scalar:true)
+}, by: { dt.entity.host, dt.entity.disk }, from: -2h
 | fieldsAdd instance = entityName(dt.entity.host)
 | join [
     fetch metric.series
@@ -8,20 +11,11 @@ timeseries disk_used_pct = avg(dt.host.disk.used.percent, scalar:true), by: { dt
     | dedup instance
   ], on: { instance }, kind: inner
 | fieldsAdd disk_name = entityName(dt.entity.disk)
-| fields dt.entity.host, instance, disk_name, disk_used_pct
+| fields dt.entity.host, instance, disk_name, used, avail
 | sort instance asc
 
 
-timeseries disk_used_pct = avg(dt.host.disk.used.percent), by: { dt.entity.host, dt.entity.disk }, from: -2h
-| fieldsAdd instance = entityName(dt.entity.host)
-| join [
-    fetch metric.series
-    | filter metric.key == "mysql.global_status.availability"
-    | fieldsAdd instance = device.name
-    | fields instance
-    | dedup instance
-  ], on: { instance }, kind: inner
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| fieldsAdd disk_used_pct_latest = arrayLast(disk_used_pct)
-| fields dt.entity.host, instance, disk_name, disk_used_pct_latest
-| sort instance asc
+metrics
+| filter startsWith(metric.key, "dt.host.disk")
+| sort metric.key asc
+
