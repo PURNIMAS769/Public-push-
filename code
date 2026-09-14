@@ -1,3 +1,26 @@
-timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
-by:{`dt.entity.sql:db2_instance`}, from:-7d
-| summarize count()
+timeseries disk_used_pct = avg(dt.host.disk.used.percent), by: { dt.entity.host, dt.entity.disk }, from: -2h
+| fieldsAdd instance = entityName(dt.entity.host)
+| join [
+    fetch metric.series
+    | filter metric.key == "mysql.global_status.availability"
+    | fieldsAdd instance = device.name
+    | fields instance
+    | dedup instance
+  ], on: { instance }, kind: inner
+| fieldsAdd disk_name = entityName(dt.entity.disk)
+| fields dt.entity.host, instance, disk_name, disk_used_pct
+| sort instance asc
+
+
+timeseries { used = avg(dt.host.disk.used), avail = avg(dt.host.disk.avail) }, by: { dt.entity.host, dt.entity.disk }, from: -2h
+| fieldsAdd instance = entityName(dt.entity.host)
+| join [
+    fetch metric.series
+    | filter metric.key == "mysql.global_status.availability"
+    | fieldsAdd instance = device.name
+    | fields instance
+    | dedup instance
+  ], on: { instance }, kind: inner
+| fieldsAdd disk_name = entityName(dt.entity.disk)
+| fields dt.entity.host, instance, disk_name, used, avail
+| sort instance asc
