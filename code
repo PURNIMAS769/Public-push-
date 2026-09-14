@@ -2,3 +2,6 @@
     fetch `dt.entity.sql:db2_host`
     | fields id, host_name = Hostname
   ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:""
+
+
+describe `dt.entity.sql:db2_database_member`
