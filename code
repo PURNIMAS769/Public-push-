@@ -1,9 +1,9 @@
-timeseries storage_size = avg(mongodb.db.db_storage_size), by:{`dt.entity.mongodb:database`}
+timeseries indexes = avg(mongodb.db.indexes), by:{`dt.entity.mongodb:database`}
 | lookup [ fetch `dt.entity.mongodb:database` | fields id, db_name = entity.name ],
     sourceField:`dt.entity.mongodb:database`, lookupField:id, prefix:"d_"
-| fieldsAdd storage_size_mb = round(arrayLast(storage_size) / 1024 / 1024, decimals:2)
-| filter isNotNull(storage_size_mb)
-| fields db_name = d_db_name, storage_size_mb
+| fieldsAdd indexes_count = round(arrayLast(indexes), decimals:0)
+| filter isNotNull(indexes_count)
+| fields db_name = d_db_name, indexes_count
 | filter arraySize(array($database)) == 0 or in(db_name, array($database))
-| sort storage_size_mb desc
+| sort indexes_count desc
 | limit 50
