@@ -1,9 +1,12 @@
-timeseries indexes = avg(mongodb.db.indexes), by:{`dt.entity.mongodb:database`}
-| lookup [ fetch `dt.entity.mongodb:database` | fields id, db_name = entity.name ],
-    sourceField:`dt.entity.mongodb:database`, lookupField:id, prefix:"d_"
-| fieldsAdd indexes_count = round(arrayLast(indexes), decimals:0)
-| filter isNotNull(indexes_count)
-| fields db_name = d_db_name, indexes_count
-| filter arraySize(array($database)) == 0 or in(db_name, array($database))
-| sort indexes_count desc
-| limit 50
+timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
+by:{`dt.entity.sql:db2_instance`}, interval:5m
+| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
+| filter isNotNull(instance)
+| fields timeframe, instance, logical_reads, interval, `dt.entity.sql:db2_instance`
+
+timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
+by:{`dt.entity.sql:db2_instance`}, interval:5m
+| fieldsAdd instance = entityName(`dt.entity.sql:db2_instance`)
+| filter isNotNull(instance)
+| filter in($instance, "*") or in(instance, array($instance))
+| fields timeframe, instance, logical_reads, interval, `dt.entity.sql:db2_instance`
