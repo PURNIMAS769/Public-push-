@@ -6,23 +6,6 @@
 
 describe `dt.entity.sql:db2_database_member`
 
-
-fetch `dt.entity.sql:db2_instance`
-| fieldsAdd host_ref = runs_on[`dt.entity.sql:db2_host`]
-| fieldsAdd instance_name = entity.name
-| filter isNull(host_ref)
-| fields instance_name, host_ref
-
-fetch `dt.entity.sql:db2_instance`
-| fieldsAdd host_ref = runs_on[`dt.entity.sql:db2_host`]
-| lookup [
-    fetch `dt.entity.sql:db2_host`
-    | fields id, host_name = Hostname
-  ], sourceField:host_ref, lookupField:id, prefix:"h_"
-| filter isNotNull(h_host_name)
-| filter in(h_host_name, array($host))
-| fieldsAdd instance_name = entity.name
-| filter isNotNull(instance_name)
-| summarize count(), by:{instance_name}
-| fields instance_name
-| sort instance_name asc
+fetch `dt.entity.sql:db2_database_member`
+| fields id, entity.name, Instance, Device, Member, child_of
+| limit 5
