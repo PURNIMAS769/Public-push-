@@ -1,4 +1,4 @@
-timeseries disk_used_pct = avg(dt.host.disk.used.percent), by: { dt.entity.host, dt.entity.disk }, from: -2h
+timeseries disk_used_pct = avg(dt.host.disk.used.percent, scalar:true), by: { dt.entity.host, dt.entity.disk }, from: -2h
 | fieldsAdd instance = entityName(dt.entity.host)
 | join [
     fetch metric.series
@@ -12,7 +12,7 @@ timeseries disk_used_pct = avg(dt.host.disk.used.percent), by: { dt.entity.host,
 | sort instance asc
 
 
-timeseries { used = avg(dt.host.disk.used), avail = avg(dt.host.disk.avail) }, by: { dt.entity.host, dt.entity.disk }, from: -2h
+timeseries disk_used_pct = avg(dt.host.disk.used.percent), by: { dt.entity.host, dt.entity.disk }, from: -2h
 | fieldsAdd instance = entityName(dt.entity.host)
 | join [
     fetch metric.series
@@ -22,5 +22,6 @@ timeseries { used = avg(dt.host.disk.used), avail = avg(dt.host.disk.avail) }, b
     | dedup instance
   ], on: { instance }, kind: inner
 | fieldsAdd disk_name = entityName(dt.entity.disk)
-| fields dt.entity.host, instance, disk_name, used, avail
+| fieldsAdd disk_used_pct_latest = arrayLast(disk_used_pct)
+| fields dt.entity.host, instance, disk_name, disk_used_pct_latest
 | sort instance asc
