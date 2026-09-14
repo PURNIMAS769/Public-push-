@@ -2,3 +2,4 @@ fetch metric.series
 | filter contains(metric.key, "mysql")
 | summarize seriesCount = count(), by:{metric.key}
 | sort seriesCount desc
+[
