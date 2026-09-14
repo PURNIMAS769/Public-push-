@@ -4,5 +4,7 @@ fetch `dt.entity.sql:db2_database_member`
     fetch `dt.entity.sql:db2_instance`
     | fields id, instance_name = entity.name
   ], sourceField:instance_ref, lookupField:id, prefix:"i_"
-| filter isNull(i_instance_name)
-| fields entity.name, instance_ref
+| fieldsAdd member_name = entity.name
+| filter isNotNull(member_name)
+| summarize count(), by:{member_name}
+| fields member_name
