@@ -1,33 +1,4 @@
-fetch dt.entity.host
-| join [
-    fetch metric.series
-    | filter metric.key == "mysql.global_status.availability"
-    | fieldsAdd instance = device.name
-    | fields instance
-    | dedup instance
-  ], kind: inner, on: {left[entity.name] == right[instance]}, fields: { instance }
-| fieldsAdd pg_ids = runs[dt.entity.process_group]
-| fields id, entity.name, pg_ids
-| expand pg_ids
-| join [
-    fetch dt.entity.process_group
-    | fieldsAdd pgi_ids = instantiates[dt.entity.process_group_instance]
-    | fields id, pgi_ids
-  ], kind: inner, on: {left[pg_ids] == right[id]}, fields: { pgi_ids }
-| expand pgi_ids
-| fields entity.name, check_id = pgi_ids
-| join [
-    fetch dt.davis.events
-    | filter in(event.type, {"DEPLOYMENT_CHANGED_CHANGE", "DEPLOYMENT_CHANGED_NEW",
-        "DEPLOYMENT_CHANGED_REMOVED", "METRIC_CHANGEPOINT"})
-    | expand affected_entity_ids
-    | fieldsAdd change_type = event.type, change_name = event.name, change_time = event.start
-    | fieldsKeep affected_entity_ids, change_type, change_name, change_time
-  ], kind: inner, on: {left[check_id] == right[affected_entity_ids]}, prefix: "c."
-| fieldsAdd change_type_readable =
-    if(c.change_type == "DEPLOYMENT_CHANGED_CHANGE", "Config/Deployment Changed",
-    else:if(c.change_type == "DEPLOYMENT_CHANGED_NEW", "New Deployment",
-    else:if(c.change_type == "DEPLOYMENT_CHANGED_REMOVED", "Deployment Removed",
-    else:if(c.change_type == "METRIC_CHANGEPOINT", "Metric Shift", else: c.change_type))))
-| fields host_name = entity.name, change_type_readable, c.change_name, c.change_time
-| sort c.change_time desc
+fetch metric.series
+| filter startsWith(metric.key, "mysql.")
+| fieldsAdd device.name
+| summarize count(), by: {device.name}
