@@ -1,38 +1,15 @@
-SMSEXEC Page Faults (using belongs_to instead of runs_on)
-timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.process_group_instance
-    | filter contains(entity.name, "smsexec.exe")
-    | fieldsAdd dt.entity.host = belongs_to[dt.entity.host]
-    | fields dt.entity.host
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fields hostname, page_faults
-| sort page_faults desc
+timeseries size = sum(mysql.databases.size), by: { device.name }, from: -2h
+| filter in(device.name, $host)
+| fieldsAdd instance = device.name
+| fieldsAdd total_storage_gb = round(arrayLast(size) / 1073741824, decimals: 2)
+| fields instance, total_storage_gb
+| sort total_storage_gb desc
 
-Same fix for WsusService
-timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.process_group_instance
-    | filter contains(entity.name, "WsusService.exe")
-    | fieldsAdd dt.entity.host = belongs_to[dt.entity.host]
-    | fields dt.entity.host
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fields hostname, page_faults
-| sort page_faults desc
-
-Same fix for SiteComp
-timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
-  by:{dt.entity.host},
-  filter: dt.entity.host in [
-    fetch dt.entity.process_group_instance
-    | filter contains(entity.name, "sitecomp.exe")
-    | fieldsAdd dt.entity.host = belongs_to[dt.entity.host]
-    | fields dt.entity.host
-  ]
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fields hostname, page_faults
-| sort page_faults desc
+timeseries size = avg(mysql.databases.size),
+  by: { database, device.name, `dt.entity.mysql:database` }, from: -2h
+| filter in(device.name, $host)
+| fieldsAdd db = database, instance = device.name
+| fieldsAdd size_gb = round(arrayLast(size) / 1073741824, decimals: 2)
+| fields db, instance, size_gb, `dt.entity.mysql:database`
+| sort size_gb desc
+| limit 20
