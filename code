@@ -1,5 +1,6 @@
-
+The fix — request the host relationship directly
 fetch dt.entity.process_group_instance
 | filter contains(entity.name, "smsexec.exe")
-| fields id, pgi_name = entity.name
+| fieldsAdd dt.entity.host = runs_on[dt.entity.host]
+| fields id, pgi_name = entity.name, dt.entity.host
 | limit 10
