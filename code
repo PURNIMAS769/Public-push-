@@ -1,12 +1,21 @@
-Isolation Test
-fetch dt.entity.process_group_instance
-| filter contains(entity.name, "smsexec.exe")
-| fieldsAdd dt.entity.host = runs_on[dt.entity.host]
-| fields dt.entity.host
-
-
-fetch dt.entity.process_group_instance
-| filter contains(entity.name, "smsexec.exe")
+Let's find out what these custom devices actually represent
+fetch dt.entity.custom_device
+| filter id == "CUSTOM_DEVICE-F9F23B92706126C1"
 | fields id, entity.name
 
 
+Also worth checking if the custom device itself has a further relationship pointing to a real host underneath it:
+
+fetch dt.entity.custom_device
+| filter id == "CUSTOM_DEVICE-F9F23B92706126C1"
+| fieldsAdd all_fields = record(*)
+
+used earlier for the SQL blocked-processes tile:
+
+fetch dt.entity.process_group_instance
+| filter contains(entity.name, "smsexec.exe")
+| fields id, pgi_name = entity.name
+| limit 5
+
+
+Please run this and share the outp
