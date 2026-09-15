@@ -1,37 +1,39 @@
-Host-level Page Faults — SMSEXEC (hosts running smsexec.exe)
+(matching the outer field being filtered). Let's rename it to match exactly, removing any ambiguity.
+
+Fixed — SMSEXEC
 timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.process_group_instance
     | filter contains(entity.name, "smsexec.exe")
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | fields h
+    | fieldsAdd dt.entity.host = runs_on[dt.entity.host]
+    | fields dt.entity.host
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
 | fields hostname, page_faults
 | sort page_faults desc
 
-Host-level Page Faults — WsusService (hosts running WsusService.exe)
+Fixed — WsusService
 timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.process_group_instance
     | filter contains(entity.name, "WsusService.exe")
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | fields h
+    | fieldsAdd dt.entity.host = runs_on[dt.entity.host]
+    | fields dt.entity.host
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
 | fields hostname, page_faults
 | sort page_faults desc
 
-Host-level Page Faults — SiteComp (hosts running sitecomp.exe)
+Fixed — SiteComp
 timeseries page_faults = avg(dt.host.memory.avail.pfps, scalar:true),
   by:{dt.entity.host},
   filter: dt.entity.host in [
     fetch dt.entity.process_group_instance
     | filter contains(entity.name, "sitecomp.exe")
-    | fieldsAdd h = runs_on[dt.entity.host]
-    | fields h
+    | fieldsAdd dt.entity.host = runs_on[dt.entity.host]
+    | fields dt.entity.host
   ]
 | fieldsAdd hostname = entityName(dt.entity.host)
 | fields hostname, page_faults
