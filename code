@@ -1,15 +1,10 @@
 timeseries size = sum(mysql.databases.size), by: { device.name }, from: -2h
-| filter in(device.name, $host)
 | fieldsAdd instance = device.name
 | fieldsAdd total_storage_gb = round(arrayLast(size) / 1073741824, decimals: 2)
 | fields instance, total_storage_gb
 | sort total_storage_gb desc
 
-timeseries size = avg(mysql.databases.size),
-  by: { database, device.name, `dt.entity.mysql:database` }, from: -2h
-| filter in(device.name, $host)
-| fieldsAdd db = database, instance = device.name
-| fieldsAdd size_gb = round(arrayLast(size) / 1073741824, decimals: 2)
-| fields db, instance, size_gb, `dt.entity.mysql:database`
-| sort size_gb desc
-| limit 20
+fetch metric.series
+| filter metric.key == "mysql.databases.size"
+| fields device.name
+| dedup device.name
