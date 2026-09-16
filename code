@@ -1,10 +1,26 @@
-Don't assume the tag key. Run this to see the actual tag key/value format on your applications:
+1. Find service entities matching Accums/DME naming
 
-fetch dt.entity.application
-| fieldsAdd tags
-| filter matchesValue(tags, "*Claims*")
+fetch dt.entity.service
+| filter contains(entity.name, "accums") or contains(entity.name, "dme") or contains(entity.name, "Accum")
 | fields entity.name, id, tags
-| limit 20
 
 
-This confirms whether it's Por
+2. Find process groups (Spring Boot / Java processes) tied to these services
+
+fetch dt.entity.process_group
+| filter contains(entity.name, "accums") or contains(entity.name, "dme") or contains(entity.name, "Adjudication")
+| fields entity.name, id, technology
+
+
+3. Confirm which service-level metrics are actually collecting for these services
+
+fetch metric.series
+| filter contains(metric.key, "service.")
+| summarize count(), by:{metric.key}
+
+
+
+timeseries avg(dt.service.request.count), by:{dt.entity.service}
+| filter contains(dt.entity.service.name, "accums") or contains(dt.entity.service.name, "dme")
+
+
