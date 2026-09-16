@@ -1,12 +1,20 @@
 
-
-timeseries avg(dt.service.request.count), by:{dt.entity.service}
+Query 1 — Identify the DB engine(s) used by Accums services
+timeseries sum(dt.service.database.query.count), by:{dt.entity.service, db.system, db.vendor, db.name}
 | fieldsAdd serviceName = entityName(dt.entity.service)
-| filter contains(serviceName, "accums") or contains(serviceName, "Accum") or contains(serviceName, "dme")
+| filter contains(serviceName, "ccum") or contains(serviceName, "dme") or contains(serviceName, "Shared")
 
 
 
+Query 2 — Cross-check via service entity tags (in case dimension names differ slightly)
 fetch dt.entity.service
-| filter contains(entity.name, "Accum") or contains(entity.name, "dme")
-| fieldsAdd tags
+| filter contains(tags, "APMID:APP00006805") or contains(tags, "APMID:APP00005588") or contains(tags, "APMID:APP00236407")
+| fieldsAdd id, entity.name, tags
+
+
+
+fetch dt.entity.service_instance
+| filter matchesPhrase(dt.entity.service, "<service-id-here>")
+| fields entity.name, softwareTechnologies
+
 
