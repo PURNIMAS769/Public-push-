@@ -1,26 +1,12 @@
-1. Find service entities matching Accums/DME naming
-
-fetch dt.entity.service
-| filter contains(entity.name, "accums") or contains(entity.name, "dme") or contains(entity.name, "Accum")
-| fields entity.name, id, tags
-
-
-2. Find process groups (Spring Boot / Java processes) tied to these services
-
-fetch dt.entity.process_group
-| filter contains(entity.name, "accums") or contains(entity.name, "dme") or contains(entity.name, "Adjudication")
-| fields entity.name, id, technology
-
-
-3. Confirm which service-level metrics are actually collecting for these services
-
-fetch metric.series
-| filter contains(metric.key, "service.")
-| summarize count(), by:{metric.key}
-
 
 
 timeseries avg(dt.service.request.count), by:{dt.entity.service}
-| filter contains(dt.entity.service.name, "accums") or contains(dt.entity.service.name, "dme")
+| fieldsAdd serviceName = entityName(dt.entity.service)
+| filter contains(serviceName, "accums") or contains(serviceName, "Accum") or contains(serviceName, "dme")
 
+
+
+fetch dt.entity.service
+| filter contains(entity.name, "Accum") or contains(entity.name, "dme")
+| fieldsAdd tags
 
