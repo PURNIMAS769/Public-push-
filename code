@@ -1,8 +1,17 @@
-timeseries avg(dt.process.zos.db2.num_active_connections), by:{dt.entity.process_group}
-| fieldsAdd pgName = entityName(dt.entity.process_group)
-| filter contains(pgName, "DP0C") or contains(pgName, "DB2")
+fetch metric.series
+| filter metric.key == "dt.process.zos.db2.num_active_connections"
+| fieldsAdd dimensionKeys = dimensions
+| limit 5
 
 
-fetch dt.entity.process_group
-| filter contains(entity.name, "DP0C") or contains(toString(tags), "DB2")
+timeseries avg(dt.process.zos.db2.num_active_connections)
+| limit 5
+
+fetch dt.entity.custom_device
+| filter contains(entity.name, "DP0C")
+| fieldsAdd entity.name, id, tags, entity.type
+
+
+fetch dt.entity.host
+| filter contains(entity.name, "DP0C") or contains(toString(tags), "DP0C")
 | fieldsAdd entity.name, id, tags
