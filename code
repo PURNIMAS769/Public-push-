@@ -1,13 +1,13 @@
-fetch dt.entity.service
-| filter contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd id, entity.name, tags
-
-
-timeseries sum(dt.service.database.query.count), by:{dt.entity.service}
-| fieldsAdd serviceName = entityName(dt.entity.service)
-| filter contains(serviceName, "ccum") or contains(serviceName, "dme")
-
-
 fetch dt.entity.service_instance
 | filter contains(toString(tags), "APMID:APP00006805")
+| fieldsAdd entity.name, sends_to, receives_from, runs_on
+
+
+fetch dt.entity.service
+| filter entity.name == "DP0C"
+| fieldsAdd id, tags, entity.detected_name, instance_of
+
+
+fetch dt.entity.process_group_instance
+| filter contains(toString(tags), "APMID:APP00006805") or contains(toString(tags), "APMID:APP00005588")
 | fieldsAdd entity.name, softwareTechnologies
