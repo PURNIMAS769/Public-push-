@@ -1,7 +1,8 @@
-fetch dt.entity.custom_device
-| filter contains(entity.name, "DP0C") or contains(entity.name, "DB2") or contains(entity.name, "Mainframe")
-| fieldsAdd entity.name, id, tags
+timeseries avg(dt.process.zos.db2.num_active_connections), by:{dt.entity.process_group}
+| fieldsAdd pgName = entityName(dt.entity.process_group)
+| filter contains(pgName, "DP0C") or contains(pgName, "DB2")
 
-fetch metric.series
-| filter contains(metric.key, "db2") or contains(metric.key, "mainframe")
-| summarize count(), by:{metric.key}
+
+fetch dt.entity.process_group
+| filter contains(entity.name, "DP0C") or contains(toString(tags), "DB2")
+| fieldsAdd entity.name, id, tags
