@@ -1,13 +1,7 @@
-fetch dt.entity.service_instance
-| filter contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd entity.name, sends_to, receives_from, runs_on
+fetch dt.entity.custom_device
+| filter contains(entity.name, "DP0C") or contains(entity.name, "DB2") or contains(entity.name, "Mainframe")
+| fieldsAdd entity.name, id, tags
 
-
-fetch dt.entity.service
-| filter entity.name == "DP0C"
-| fieldsAdd id, tags, entity.detected_name, instance_of
-
-
-fetch dt.entity.process_group_instance
-| filter contains(toString(tags), "APMID:APP00006805") or contains(toString(tags), "APMID:APP00005588")
-| fieldsAdd entity.name, softwareTechnologies
+fetch metric.series
+| filter contains(metric.key, "db2") or contains(metric.key, "mainframe")
+| summarize count(), by:{metric.key}
