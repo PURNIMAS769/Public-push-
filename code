@@ -1,7 +1,17 @@
 fetch dt.entity.process_group
-| filter matchesValue(id, "PROCESS_GROUP-37F15AA134E1213F") or matchesValue(id, "PROCESS_GROUP-4E3E4195C851A97D") or matchesValue(id, "PROCESS_GROUP-8E7B7096ED0F4DDB") or matchesValue(id, "PROCESS_GROUP-05CF2551B931F61C") or matchesValue(id, "PROCESS_GROUP-538A1E77108410DD")
+| filter id in ["PROCESS_GROUP-37F15AA134E1213F", "PROCESS_GROUP-4E3E4195C851A97D", "PROCESS_GROUP-8E7B7096ED0F4DDB", "PROCESS_GROUP-05CF2551B931F61C", "PROCESS_GROUP-538A1E77108410DD"]
 | fieldsAdd entity.name, tags
 
+
 fetch dt.entity.host
-| filter matchesValue(id, "HOST-A01C4C291D46CEEB") or matchesValue(id, "HOST-3CD6FA7377694A9A") or matchesValue(id, "HOST-6351F8F644438C70") or matchesValue(id, "HOST-E8B60719FDA22264")
+| filter id in ["HOST-A01C4C291D46CEEB", "HOST-3CD6FA7377694A9A", "HOST-6351F8F644438C70", "HOST-E8B60719FDA22264"]
+| fieldsAdd entity.name, tags, ipAddress
+
+fetch dt.entity.process_group
+| filter entity.id == "PROCESS_GROUP-37F15AA134E1213F" or entity.id == "PROCESS_GROUP-4E3E4195C851A97D" or entity.id == "PROCESS_GROUP-8E7B7096ED0F4DDB" or entity.id == "PROCESS_GROUP-05CF2551B931F61C" or entity.id == "PROCESS_GROUP-538A1E77108410DD"
+| fieldsAdd entity.name, tags
+
+
+fetch dt.entity.host
+| filter contains(toString(ipAddress), "10.129.46")
 | fieldsAdd entity.name, tags, ipAddress
