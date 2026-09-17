@@ -1,17 +1,7 @@
-fetch metric.series
-| filter metric.key == "dt.process.zos.db2.num_active_connections"
-| fieldsAdd dimensionKeys = dimensions
-| limit 5
-
-
-timeseries avg(dt.process.zos.db2.num_active_connections)
-| limit 5
-
-fetch dt.entity.custom_device
-| filter contains(entity.name, "DP0C")
-| fieldsAdd entity.name, id, tags, entity.type
-
+fetch dt.entity.process_group
+| filter matchesValue(id, "PROCESS_GROUP-37F15AA134E1213F") or matchesValue(id, "PROCESS_GROUP-4E3E4195C851A97D") or matchesValue(id, "PROCESS_GROUP-8E7B7096ED0F4DDB") or matchesValue(id, "PROCESS_GROUP-05CF2551B931F61C") or matchesValue(id, "PROCESS_GROUP-538A1E77108410DD")
+| fieldsAdd entity.name, tags
 
 fetch dt.entity.host
-| filter contains(entity.name, "DP0C") or contains(toString(tags), "DP0C")
-| fieldsAdd entity.name, id, tags
+| filter matchesValue(id, "HOST-A01C4C291D46CEEB") or matchesValue(id, "HOST-3CD6FA7377694A9A") or matchesValue(id, "HOST-6351F8F644438C70") or matchesValue(id, "HOST-E8B60719FDA22264")
+| fieldsAdd entity.name, tags, ipAddress
