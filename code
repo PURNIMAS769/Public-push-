@@ -1,5 +1,4 @@
 fetch dt.davis.events, from:-30d
-| filter event.type == "CUSTOM_INFO"
 | expand affected_entity_ids
 | lookup [
     fetch dt.entity.cloud_application
@@ -7,5 +6,5 @@ fetch dt.davis.events, from:-30d
     | fields id, entity.name
 ], sourceField: affected_entity_ids, lookupField: id, fields: { deployment_name = entity.name }
 | filter isNotNull(deployment_name)
-| summarize event_count = count(), by:{event.name}
+| summarize event_count = count(), by:{event.type, event.name}
 | sort event_count desc
