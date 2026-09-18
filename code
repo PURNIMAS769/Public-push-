@@ -1,4 +1,6 @@
-fetch dt.entity.cloud_application
+
+
+fetch dt.entity.cloud_application_instance
 | filter namespaceName == "app00006805-accums-adjudication"
 | fields entity.name, tags
 | limit 3
