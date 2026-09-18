@@ -1,43 +1,24 @@
-fetch dt.entity.process_group_instance
+fetch dt.entity.process_group_instance, from:-24h
 | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-| fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), host)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| append [
-    fetch dt.entity.service
-    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-    | fields check_id = id
-]
-| append [
-    fetch dt.entity.cloud_application
-    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-    | fields check_id = id
-]
-| append [
-    fetch dt.entity.cloud_application_instance
-    | filter namespaceName == "app00006805-accums-adjudication"
-    | fields check_id = id
-]
-| append [
-    fetch dt.entity.cloud_application_namespace
-    | filter namespaceName == "app00006805-accums-adjudication"
-    | fields check_id = id
-]
+| fieldsAdd is_running_15m = if(lifetime[end] > now() - 15m, true, else: false)
+| fields entity.name, lifetime, is_running_15m
+| sort is_running_15m asc
+
+
+fetch dt.entity.process_group_instance, from:-24h
+| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
+| fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else: false)
 | join [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
+    fetch dt.davis.problems, from:-24h
+    | filter event.status == "ACTIVE"
     | expand affected_entity_ids
-    | fieldsAdd clamped_start = if(event.start < toTimestamp($dt_timeframe_from), toTimestamp($dt_timeframe_from), else: event.start)
-    | fieldsAdd clamped_end = if(isNotNull(event.end), if(event.end > toTimestamp($dt_timeframe_to), toTimestamp($dt_timeframe_to), else: event.end), else: toTimestamp($dt_timeframe_to))
-    | fieldsAdd downtime_ms = (clamped_end - clamped_start) / 1ms
-    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
-], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
-| summarize total_downtime_ms = sum(p.downtime_ms)
-| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
-| fieldsAdd Downtime_Used = round(total_downtime_ms / 3600000, decimals:2)
-| fieldsAdd target = 99.9
-| fieldsAdd total_period_hrs = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1h
-| fieldsAdd Allowed_Downtime = round(((100 - target) / 100) * total_period_hrs, decimals:2)
-| fieldsAdd Remaining_Budget = round(Allowed_Downtime - Downtime_Used, decimals:2)
-| fields Downtime_Used, Allowed_Downtime, Remaining_Budget
+    | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
+], kind:leftOuter, on:{left[id] == right[affected_entity_ids]}, prefix:"p."
+| fieldsAdd open_problem_count = if(isNull(p.problem_count), 0, else: p.problem_count)
+| fieldsAdd instance_state = if(is_running == false, "DOWN", else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else: "HEALTHY"))
+| summarize
+    total_instances = count(),
+    running_instances = countIf(is_running == true),
+    healthy_instances = countIf(instance_state == "HEALTHY"),
+    unhealthy_instances = countIf(instance_state == "UNHEALTHY (Active Alert)"),
+    down_instances = countIf(instance_state == "DOWN")
