@@ -1,8 +1,8 @@
-fetch dt.entity.process_group
-| filter in(id, array("PROCESS_GROUP-37F15AA134E1213F", "PROCESS_GROUP-4E3E4195C851A97D", "PROCESS_GROUP-8E7B7096ED0F4DDB", "PROCESS_GROUP-05CF2551B931F61C", "PROCESS_GROUP-538A1E77108410DD"))
-| fieldsAdd entity.name, tags
+fetch dt.entity.service
+| filter contains(toString(tags), "APMID:APP00006805")
+| fieldsAdd entity.name, id, tags
 
 
-fetch dt.entity.host
-| filter in(id, array("HOST-A01C4C291D46CEEB", "HOST-3CD6FA7377694A9A", "HOST-6351F8F644438C70", "HOST-E8B60719FDA22264"))
-| fieldsAdd entity.name, tags, ipAddress
+timeseries sum(dt.service.database.query.count), by:{dt.entity.service}
+| fieldsAdd serviceName = entityName(dt.entity.service)
+| filter contains(toString(tags), "APMID:APP00006805")
