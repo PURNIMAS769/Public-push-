@@ -1,10 +1,33 @@
+fetch dt.entity.process_group_instance, from:-24h
+| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
+| fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else: false)
+| fieldsAdd dt.entity.process_group = is_instance_of[dt.entity.process_group]
+| join [
+    fetch dt.davis.problems, from:-24h
+    | filter event.status == "ACTIVE"
+    | expand affected_entity_ids
+    | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
+], kind:leftOuter, on:{left[id] == right[affected_entity_ids]}, prefix:"p."
+| fieldsAdd open_problem_count = if(isNull(p.problem_count), 0, else: p.problem_count)
+| summarize
+    any_running = countIf(is_running == true) > 0,
+    open_problem_count = sum(open_problem_count),
+    by:{dt.entity.process_group}
+| fieldsAdd state = if(any_running == false, "DOWN", else: if(open_problem_count > 0, "UNHEALTHY", else: "HEALTHY"))
+| summarize
+    Total_Services = count(),
+    Healthy = countIf(state == "HEALTHY"),
+    Unhealthy = countIf(state == "UNHEALTHY"),
+    Down = countIf(state == "DOWN")
+
+
+
 timeseries
     total_requests = sum(dt.service.request.count),
     failed_requests = sum(dt.service.request.failure_count),
     by:{dt.entity.service},
     from:-24h
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
 | fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
 | filter total_sum > 0
 | fieldsAdd availability_pct = round((1 - (failed_sum / total_sum)) * 100, decimals:2)
@@ -15,6 +38,9 @@ timeseries
     | summarize open_problem_count = countDistinct(event.id), by:{affected_entity_ids}
 ], kind:leftOuter, on:{left[dt.entity.service] == right[affected_entity_ids]}, prefix:"p."
 | fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
-| fieldsAdd health_status = if(open_problem_count > 0, "⚠️ ALERT ACTIVE", else: if(availability_pct < 99.9, "⚠️ DEGRADED", else: "✅ HEALTHY"))
-| fields service_name, dt.entity.service, total_sum, failed_sum, availability_pct, open_problem_count, health_status
-| sort availability_pct asc
+| fieldsAdd health_status = if(open_problem_count > 0, "UNHEALTHY", else: if(availability_pct < 99.9, "DEGRADED", else: "HEALTHY"))
+| summarize
+    Total_Services = count(),
+    Healthy = countIf(health_status == "HEALTHY"),
+    Degraded = countIf(health_status == "DEGRADED"),
+    Unhealthy = countIf(health_status == "UNHEALTHY")
