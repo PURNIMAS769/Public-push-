@@ -1,20 +1,6 @@
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-| fieldsAdd dt.entity.host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), dt.entity.host)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| append [ fetch dt.entity.service | filter arrayIndexOf(tags, "APMID:APP00006805") > -1 | fields check_id = id ]
-| append [ fetch dt.entity.cloud_application | filter arrayIndexOf(tags, "APMID:APP00006805") > -1 | fields check_id = id ]
-| append [ fetch dt.entity.cloud_application_instance | filter namespaceName == "app00006805-accums-adjudication" | fields check_id = id ]
-| append [ fetch dt.entity.cloud_application_namespace | filter namespaceName == "app00006805-accums-adjudication" | fields check_id = id ]
-| summarize check_ids = collectDistinct(check_id)
-| join [
-    fetch dt.davis.problems, from:-10d
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | expand affected_entity_ids
-], kind:leftOuter, on:{true}
-| filter arrayIndexOf(check_ids, affected_entity_ids) > -1
+fetch dt.davis.problems //, from:-10d
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter in("APMID:APP00006805", entity_tags)
 | summarize
     problem_title = takeFirst(event.name),
     severity = takeFirst(event.category),
@@ -28,12 +14,12 @@ fetch dt.entity.process_group_instance
 | fieldsAdd hrs = floor(total_seconds / 3600), mins = floor((total_seconds % 3600) / 60)
 | fieldsAdd age_formatted = concat(toString(hrs), "h ", toString(mins), "m")
 | fieldsAdd `Entity Type` =
-    if(contains(toString(affected_types), "dt.entity.host"), "Host/Node",
-    else: if(contains(toString(affected_types), "dt.entity.process_group_instance"), "Process/Instance",
+    if(contains(toString(affected_types), "dt.entity.process_group_instance"), "Process/Instance",
     else: if(contains(toString(affected_types), "dt.entity.cloud_application_instance"), "Pod",
     else: if(contains(toString(affected_types), "dt.entity.cloud_application"), "Kubernetes Deployment",
     else: if(contains(toString(affected_types), "dt.entity.cloud_application_namespace"), "Namespace",
     else: if(contains(toString(affected_types), "dt.entity.service"), "Service",
-    else: "Other")))))
+    else: if(contains(toString(affected_types), "dt.entity.custom_device"), "Custom Device (DB2/Mainframe)",
+    else: "Other"))))))
 | sort start_time desc
 | fields display_id, problem_title, severity, status, `Entity Type`, root_cause, affected_types, start_time, age_formatted
