@@ -1,3 +1,6 @@
-fetch dt.entity.service
-| filter in(id, array("SERVICE-81ADD1C5AEC686A7", "SERVICE-71CBC582838AA7B5"))
+fetch dt.entity.host
+| filter contains(toString(tags), "APMID:APP00006805") or contains(toString(tags), "app00006805")
 | fieldsAdd entity.name, id, tags
+
+timeseries avg(dt.host.cpu.usage), avg(dt.host.memory.usage), by:{dt.entity.host}, from:now()-24h
+| filter in(dt.entity.host, array("<host-ids-from-query-1>"))
