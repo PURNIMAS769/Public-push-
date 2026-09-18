@@ -1,16 +1,5 @@
-fetch dt.entity.service
-| filter contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd entity.name, id
-| fieldsAdd relationships = record(*)
-| limit 1
-
 fetch spans
-| filter contains(toString(dt.entity.service.tags), "APMID:APP00006805") or dt.entity.service.name == "DP0C"
-| summarize count(), by:{span.name, dt.entity.service.name}
-| limit 30
-
-fetch spans
+| filter dt.entity.service == "SERVICE-F65400876ACCE3AA" or dt.entity.service == "SERVICE-DD6661CA37FE7FD4" or dt.entity.service == "SERVICE-A2463600558742E8"
 | filter span.kind == "client"
-| filter contains(toString(dt.entity.service.tags), "APMID:APP00006805")
 | summarize count(), by:{server.address, span.name}
 | limit 30
