@@ -1,6 +1,12 @@
-timeseries avg(dt.osservice.availability), by:{dt.entity.service}, from:-2h
-| fieldsAdd serviceName = entityName(dt.entity.service)
-| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-
-
-timeseries avg(dt.osservice.availability), by:{dt.entity.service}, from:-2h
+timeseries
+    total_requests = sum(dt.service.request.count),
+    failed_requests = sum(dt.service.request.failure_count),
+    by:{dt.entity.service},
+    from:-24h
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| fieldsAdd service_name = entityName(dt.entity.service)
+| fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
+| filter total_sum > 0
+| fieldsAdd availability_pct = round((1 - (failed_sum / total_sum)) * 100, decimals:2)
+| fields service_name, dt.entity.service, total_sum, failed_sum, availability_pct
+| sort availability_pct asc
