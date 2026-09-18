@@ -21,5 +21,8 @@ fetch dt.davis.problems //, from:-10d
     else: if(contains(toString(affected_types), "dt.entity.service"), "Service",
     else: if(contains(toString(affected_types), "dt.entity.custom_device"), "Custom Device (DB2/Mainframe)",
     else: "Other"))))))
+| fieldsAdd problem_link = concat(
+    "https://fjh52344.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
+    problem_event_id, "?from=now()-24h&to=now()")
 | sort start_time desc
-| fields display_id, problem_title, severity, status, `Entity Type`, root_cause, affected_types, start_time, age_formatted
+| fields display_id, problem_title, severity, status, `Entity Type`, root_cause, affected_types, start_time, age_formatted, problem_link
