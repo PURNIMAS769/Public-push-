@@ -1,21 +1,19 @@
 fetch metric.series
-| filter contains(metric.key, "mule")
-| summarize count(), by:{metric.key}
-
-timeseries sum(service.mule_gw_volumetrics_count), by:{channel}, from:now()-7d
+| filter metric.key == "service.mule_gw_volumetrics_claimmod"
+| limit 5
 
 
-fetch dt.entity.service
-| filter contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd entity.name, id, sends_to
-
-fetch dt.entity.host
-| filter contains(entity.name, "mule") or contains(toString(tags), "Mule") or contains(toString(tags), "MuleSoft")
-| fieldsAdd entity.name, id, tags
-| limit 20
+fetch metric.series
+| filter metric.key == "service.mule_gw_volumetrics_claim"
+| limit 5
 
 
-fetch dt.entity.custom_device
-| filter contains(entity.name, "mule") or contains(toString(tags), "Mule") or contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd entity.name, id, tags
-| limit 20
+timeseries sum(service.mule_gw_volumetrics_claimmod), from:now()-7d
+
+
+fetch metric.series
+| filter metric.key == "service.mule_gw_volumetrics_claimmod" or metric.key == "service.mule_gw_volumetrics_claim"
+| fieldsAdd allTags = toString(dimensions)
+| filter contains(allTags, "APP00006805") or contains(allTags, "accums") or contains(allTags, "Accum")
+
+
