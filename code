@@ -1,10 +1,14 @@
-fetch dt.entity.process_group_instance
-| filter (contains(toString(softwareTechnologies), "Lettuce") or contains(toString(softwareTechnologies), "Redis"))
-| filter contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd entity.name, id, tags
+fetch spans
+| filter dt.entity.service == "SERVICE-DD6661CA37FE7FD4"
+| filter span.kind == "client"
+| summarize count(), by:{span.name, server.address}
+
+
+fetch metric.series
+| filter contains(metric.key, "redis")
+| summarize count(), by:{metric.key}
 
 
 fetch dt.entity.process_group_instance
-| filter (contains(toString(softwareTechnologies), "Lettuce") or contains(toString(softwareTechnologies), "Redis"))
-| filter contains(toString(tags), "006805")
-| fieldsAdd entity.name, id, tags
+| filter id == "PROCESS_GROUP_INSTANCE-42D563FA8A3F2922" or id == "PROCESS_GROUP_INSTANCE-6FF117FED17B3F59"
+| fieldsAdd entity.name, fromRelationships, toRelationships
