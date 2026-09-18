@@ -1,5 +1,4 @@
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
-| fieldsAdd host = runs_on[dt.entity.host]
-| fields entity.name, pgi, host
+fetch dt.entity.cloud_application
+| filter namespaceName == "app00006805-accums-adjudication"
+| fields entity.name, tags
+| limit 3
