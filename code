@@ -5,57 +5,14 @@ timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name, k8s.namesp
 | lookup [
     fetch dt.entity.host
     | fields id, entity.name
-], sourceField: k8s.node.name, lookupField: entity.name, fields: { host_id = id }
+], sourceField: k8s.node.name, lookupField: entity.name, fields: { dt.entity.host = id }
 | join [
     fetch dt.davis.problems, from:-24h
     | filter event.status == "ACTIVE"
     | expand affected_entity_ids
     | summarize open_problem_count = countDistinct(event.id), by:{affected_entity_ids}
-], kind:leftOuter, on:{left[host_id] == right[affected_entity_ids]}, prefix:"p."
+], kind:leftOuter, on:{left[dt.entity.host] == right[affected_entity_ids]}, prefix:"p."
 | fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
-| fieldsAdd state = if(isNull(host_id), "⚠️ HOST ENTITY NOT FOUND", else: if(open_problem_count > 0, "⚠️ UNHEALTHY (Active Alert)", else: "✅ HEALTHY"))
-| fields k8s.node.name, host_id, open_problem_count, state
+| fieldsAdd state = if(isNull(dt.entity.host), "⚠️ HOST ENTITY NOT FOUND", else: if(open_problem_count > 0, "⚠️ UNHEALTHY (Active Alert)", else: "✅ HEALTHY"))
+| fields k8s.node.name, dt.entity.host, open_problem_count, state
 | sort state desc
-
-
-
-timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name, k8s.namespace.name}, from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-| fields k8s.node.name
-| dedup k8s.node.name
-| lookup [
-    fetch dt.entity.host
-    | fields id, entity.name
-], sourceField: k8s.node.name, lookupField: entity.name, fields: { host_id = id }
-| join [
-    fetch dt.davis.problems, from:-24h
-    | filter event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize open_problem_count = countDistinct(event.id), by:{affected_entity_ids}
-], kind:leftOuter, on:{left[host_id] == right[affected_entity_ids]}, prefix:"p."
-| fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
-| fieldsAdd state = if(isNull(host_id), "NOT_FOUND", else: if(open_problem_count > 0, "UNHEALTHY", else: "HEALTHY"))
-| summarize
-    Total_Nodes = count()
-
-
-timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name, k8s.namespace.name}, from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-| fields k8s.node.name
-| dedup k8s.node.name
-| lookup [
-    fetch dt.entity.host
-    | fields id, entity.name
-], sourceField: k8s.node.name, lookupField: entity.name, fields: { host_id = id }
-| join [
-    fetch dt.davis.problems, from:-24h
-    | filter event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize open_problem_count = countDistinct(event.id), by:{affected_entity_ids}
-], kind:leftOuter, on:{left[host_id] == right[affected_entity_ids]}, prefix:"p."
-| fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
-| fieldsAdd state = if(open_problem_count > 0, "UNHEALTHY", else: "HEALTHY")
-| summarize
-    Total_Nodes = count(),
-    Healthy = countIf(state == "HEALTHY"),
-    Unhealthy = countIf(state == "UNHEALTHY")
