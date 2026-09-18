@@ -1,8 +1,9 @@
 fetch dt.entity.process_group_instance
-| filter id == "PROCESS_GROUP_INSTANCE-42D563FA8A3F2922" or id == "PROCESS_GROUP_INSTANCE-6FF117FED17B3F59"
-| fieldsAdd entity.name, calls, runs_on
+| filter id == "PROCESS_GROUP_INSTANCE-AF5F699E74072070" or id == "PROCESS_GROUP_INSTANCE-CD82652"
+| fieldsAdd entity.name, tags, softwareTechnologies, listenPorts
+
 
 
 fetch dt.entity.process_group_instance
-| filter id == "PROCESS_GROUP_INSTANCE-42D563FA8A3F2922" or id == "PROCESS_GROUP_INSTANCE-6FF117FED17B3F59"
-| fieldsAdd entity.name, tags, softwareTechnologies
+| filter id == "PROCESS_GROUP_INSTANCE-AF5F699E74072070" or id == "PROCESS_GROUP_INSTANCE-CD82652"
+| fieldsAdd entity.name, runs_on, listenPorts, tags
