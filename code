@@ -1,41 +1,4 @@
-fetch dt.davis.events, from:-30d
-| filter event.type == "CUSTOM_INFO"
-| expand affected_entity_ids
-| lookup [
-    fetch dt.entity.cloud_application
-    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-    | fields id, entity.name
-], sourceField: affected_entity_ids, lookupField: id, fields: { deployment_name = entity.name }
-| filter isNotNull(deployment_name)
-| fieldsAdd `Change Type` =
-    if(contains(event.name, "Created pod"), "Pod Created",
-    else: if(contains(event.name, "Deleted pod"), "Pod Deleted",
-    else: if(contains(event.name, "Scaled up"), "Scaled Up",
-    else: if(contains(event.name, "Scaled down"), "Scaled Down",
-    else: if(contains(event.name, "Deployment spec change"), "Deployment Spec Changed",
-    else: if(contains(event.name, "forbidden") or contains(event.name, "exceeded"), "Pod Creation Failed (Quota Exceeded)",
-    else: "Other Kubernetes Event"))))))
-| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type` }
-| sort day desc
-
-
-
-fetch dt.davis.events, from:-30d
-| filter event.type == "CUSTOM_INFO"
-| expand affected_entity_ids
-| lookup [
-    fetch dt.entity.cloud_application
-    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-    | fields id, entity.name
-], sourceField: affected_entity_ids, lookupField: id, fields: { deployment_name = entity.name }
-| filter isNotNull(deployment_name)
-| fieldsAdd `Change Type` =
-    if(contains(event.name, "Created pod"), "Pod Created",
-    else: if(contains(event.name, "Deleted pod"), "Pod Deleted",
-    else: if(contains(event.name, "Scaled up"), "Scaled Up",
-    else: if(contains(event.name, "Scaled down"), "Scaled Down",
-    else: if(contains(event.name, "Deployment spec change"), "Deployment Spec Changed",
-    else: if(contains(event.name, "forbidden") or contains(event.name, "exceeded"), "Pod Creation Failed (Quota Exceeded)",
-    else: "Other Kubernetes Event"))))))
-| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type` }
-| sort day desc
+timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name}, from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
+| fields k8s.node.name
+| dedup k8s.node.name
