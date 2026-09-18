@@ -1,7 +1,13 @@
-fetch dt.entity.host
+fetch dt.entity.service
+| filter contains(entity.name, "stv-ig") or contains(entity.name, "sso-sg") or contains(entity.name, "hcscint")
+| fieldsAdd entity.name, id, tags
+
+
+fetch dt.entity.custom_device
 | filter contains(entity.name, "stv-ig") or contains(entity.name, "sso-sg")
-| fieldsAdd entity.name, tags, ipAddress
+| fieldsAdd entity.name, id, tags
 
 
-timeseries avg(dt.service.request.response_time), sum(dt.service.request.failure_count), by:{server.address}, from:now()-7d
+fetch spans
 | filter server.address == "p-sso-sg-prd-svc.hcscint.net" or server.address == "p-stv-ig-prd-svc.hcscint.net"
+| summarize count(), avgDuration = avg(duration), by:{server.address, span.name}
