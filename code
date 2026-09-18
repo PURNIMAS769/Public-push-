@@ -1,13 +1,7 @@
 fetch dt.entity.process_group_instance, from:-24h
 | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-| fieldsAdd is_running_15m = if(lifetime[end] > now() - 15m, true, else: false)
-| fields entity.name, lifetime, is_running_15m
-| sort is_running_15m asc
-
-
-fetch dt.entity.process_group_instance, from:-24h
-| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
 | fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else: false)
+| fieldsAdd pg_name = belongs_to[dt.entity.process_group]
 | join [
     fetch dt.davis.problems, from:-24h
     | filter event.status == "ACTIVE"
@@ -15,10 +9,11 @@ fetch dt.entity.process_group_instance, from:-24h
     | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
 ], kind:leftOuter, on:{left[id] == right[affected_entity_ids]}, prefix:"p."
 | fieldsAdd open_problem_count = if(isNull(p.problem_count), 0, else: p.problem_count)
-| fieldsAdd instance_state = if(is_running == false, "DOWN", else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else: "HEALTHY"))
 | summarize
-    total_instances = count(),
-    running_instances = countIf(is_running == true),
-    healthy_instances = countIf(instance_state == "HEALTHY"),
-    unhealthy_instances = countIf(instance_state == "UNHEALTHY (Active Alert)"),
-    down_instances = countIf(instance_state == "DOWN")
+    any_running = countIf(is_running == true) > 0,
+    open_problem_count = sum(open_problem_count),
+    by:{pg_name}
+| fieldsAdd state = if(any_running == false, "DOWN (No Running Instance)", else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else: "HEALTHY"))
+| fieldsAdd pg_display_name = entityName(pg_name)
+| fields pg_display_name, state
+| sort state desc
