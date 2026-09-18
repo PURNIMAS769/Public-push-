@@ -13,6 +13,8 @@ timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name, k8s.namesp
     | summarize open_problem_count = countDistinct(event.id), by:{affected_entity_ids}
 ], kind:leftOuter, on:{left[dt.entity.host] == right[affected_entity_ids]}, prefix:"p."
 | fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
-| fieldsAdd state = if(isNull(dt.entity.host), "⚠️ HOST ENTITY NOT FOUND", else: if(open_problem_count > 0, "⚠️ UNHEALTHY (Active Alert)", else: "✅ HEALTHY"))
-| fields k8s.node.name, dt.entity.host, open_problem_count, state
-| sort state desc
+| fieldsAdd state = if(open_problem_count > 0, "UNHEALTHY", else: "HEALTHY")
+| summarize
+    Total_Nodes = count(),
+    Healthy = countIf(state == "HEALTHY"),
+    Unhealthy = countIf(state == "UNHEALTHY")
