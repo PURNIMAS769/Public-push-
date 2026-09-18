@@ -1,7 +1,22 @@
-fetch dt.entity.process_group_instance
+fetch dt.entity.cloud_application_instance
 | filter contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd entity.name, runs_on
-| limit 30
+| fieldsAdd entity.name, namespaceName
+| limit 5
+
+
+timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name, k8s.namespace.name}, from:now()-24h
+| filter contains(k8s.node.name, "") 
+| limit 20
+
+fetch metric.series
+| filter metric.key == "dt.kubernetes.container.cpu_usage"
+| limit 1
+
+fetch dt.entity.cloud_application
+| filter contains(toString(tags), "APMID:APP00006805")
+| fieldsAdd entity.name, namespaceName
+| limit 3
+
 
 timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name}, from:now()-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
+| filter contains(toString(k8s.namespace.name), "app00006805")
