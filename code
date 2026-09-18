@@ -1,3 +1,23 @@
-timeseries sum(dt.service.request.count), sum(dt.service.request.failure_count), 
-avg(dt.service.request.response_time), by:{dt.entity.service}, from:now()-7d
-| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
+fetch dt.entity.cloud_application_namespace
+| filter contains(entity.name, "app00006805") or contains(toString(tags), "APMID:APP00006805")
+| fieldsAdd entity.name, id, tags
+
+
+fetch dt.entity.cloud_application
+| filter contains(toString(tags), "APMID:APP00006805") or contains(namespaceName, "app00006805")
+| fieldsAdd entity.name, id, namespaceName, tags
+
+
+fetch dt.entity.cloud_application_instance
+| filter contains(toString(tags), "APMID:APP00006805")
+| fieldsAdd entity.name, id, namespaceName
+| limit 50
+
+timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name}, from:now()-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
+
+fetch metric.series
+| filter contains(metric.key, "kubernetes") and (contains(metric.key, "cpu") or 
+contains(metric.key, "memory") or contains(metric.key, "pod") or
+contains(metric.key, "restart") or contains(metric.key, "network"))
+| summarize count(), by:{metric.key}
