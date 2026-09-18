@@ -1,5 +1,4 @@
 fetch spans
-| filter dt.entity.service == "SERVICE-F65400876ACCE3AA" or dt.entity.service == "SERVICE-DD6661CA37FE7FD4" or dt.entity.service == "SERVICE-A2463600558742E8"
-| filter span.kind == "client"
-| summarize count(), by:{server.address, span.name}
-| limit 30
+| filter server.address == "dp0chlfg.hcscint.net"
+| filter dt.entity.service == "SERVICE-DD6661CA37FE7FD4" or dt.entity.service == "SERVICE-A2463600558742E8"
+| summarize count(), by:{dt.entity.service, span.name}
