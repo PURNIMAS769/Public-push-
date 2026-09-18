@@ -1,14 +1,8 @@
-fetch spans
-| filter dt.entity.service == "SERVICE-DD6661CA37FE7FD4"
-| filter span.kind == "server"
-| summarize count(), by:{dt.entity.service, trace.parent.span.id}
-| limit 10
-
 fetch dt.entity.service
 | filter id == "SERVICE-DD6661CA37FE7FD4"
-| fieldsAdd entity.name, calls
+| fieldsAdd entity.name, called_by
 
 
 fetch dt.entity.service
 | filter id == "SERVICE-DD6661CA37FE7FD4"
-| fieldsAdd entity.name, fromRelationships
+| fieldsAdd entity.name, receives_from
