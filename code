@@ -1,8 +1,5 @@
-fetch dt.entity.service
-| filter contains(toString(tags), "APMID:APP00006805")
-| fieldsAdd entity.name, id, tags
-
-
 timeseries sum(dt.service.database.query.count), by:{dt.entity.service}
 | fieldsAdd serviceName = entityName(dt.entity.service)
-| filter contains(toString(tags), "APMID:APP00006805")
+| filter contains(serviceName, "accums") or contains(serviceName, "dme") 
+or contains(serviceName, "DP0C") or contains(serviceName, "ServiceLevel") or
+contains(serviceName, "Scenario") or contains(serviceName, "Shared")
