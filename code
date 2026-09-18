@@ -35,9 +35,9 @@ fetch dt.entity.process_group_instance
 ], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
 | summarize total_downtime_ms = sum(p.downtime_ms)
 | fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
-| fieldsAdd used_hrs = round(total_downtime_ms / 3600000, decimals:2)
+| fieldsAdd Downtime_Used = round(total_downtime_ms / 3600000, decimals:2)
 | fieldsAdd target = 99.9
 | fieldsAdd total_period_hrs = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1h
-| fieldsAdd allowed_hrs = round(((100 - target) / 100) * total_period_hrs, decimals:2)
-| fieldsAdd Allowed_Downtime_Hours = concat(toString(used_hrs), " / ", toString(allowed_hrs), " hr")
-| fields Allowed_Downtime_Hours
+| fieldsAdd Allowed_Downtime = round(((100 - target) / 100) * total_period_hrs, decimals:2)
+| fieldsAdd Remaining_Budget = round(Allowed_Downtime - Downtime_Used, decimals:2)
+| fields Downtime_Used, Allowed_Downtime, Remaining_Budget
