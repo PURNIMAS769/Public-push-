@@ -1,12 +1,14 @@
-
-
-fetch dt.entity.service
+fetch dt.entity.process_group_instance
 | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
 | fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
+| fieldsAdd all_ids = arrayConcat(array(id), host)
 | fieldsKeep all_ids
 | expand check_id = all_ids
+| append [
+    fetch dt.entity.service
+    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
+    | fields check_id = id
+]
 | append [
     fetch dt.entity.cloud_application
     | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
@@ -36,99 +38,3 @@ fetch dt.entity.service
 | fieldsAdd total_period_ms = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1ms
 | fieldsAdd availability_pct = round((1 - (total_downtime_ms / total_period_ms)) * 100, decimals:2)
 | fields availability_pct
-
-
-
-
-
-
-
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
-| fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| append [
-    fetch dt.entity.cloud_application
-    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-    | fields check_id = id
-]
-| append [
-    fetch dt.entity.cloud_application_instance
-    | filter namespaceName == "app00006805-accums-adjudication"
-    | fields check_id = id
-]
-| append [
-    fetch dt.entity.cloud_application_namespace
-    | filter namespaceName == "app00006805-accums-adjudication"
-    | fields check_id = id
-]
-| join [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
-    | expand affected_entity_ids
-    | fieldsAdd clamped_start = if(event.start < toTimestamp($dt_timeframe_from), toTimestamp($dt_timeframe_from), else: event.start)
-    | fieldsAdd clamped_end = if(isNotNull(event.end), if(event.end > toTimestamp($dt_timeframe_to), toTimestamp($dt_timeframe_to), else: event.end), else: toTimestamp($dt_timeframe_to))
-    | fieldsAdd downtime_ms = (clamped_end - clamped_start) / 1ms
-    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
-], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
-| summarize total_downtime_ms = sum(p.downtime_ms)
-| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
-| fieldsAdd total_period_ms = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1ms
-| fieldsAdd availability_pct = round((1 - (total_downtime_ms / total_period_ms)) * 100, decimals:2)
-| fieldsAdd Status = if(availability_pct >= 99.9, "✅ YES - On Target", else: "❌ NO - Below Target")
-| fields Status
-
-
-
-
-
-
-data record(target = 99.9)
-| fieldsAdd allowed_bad = 100 - target
-| fieldsAdd total_period_hrs = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1h
-| fieldsAdd total_hrs = (allowed_bad / 100) * total_period_hrs
-| fields Allowed_Downtime_Hours = round(total_hrs, decimals:2)
-
-
-
-
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
-| fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd all_ids = arrayConcat(array(id), pgi, host)
-| fieldsKeep all_ids
-| expand check_id = all_ids
-| append [
-    fetch dt.entity.cloud_application
-    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
-    | fields check_id = id
-]
-| append [
-    fetch dt.entity.cloud_application_instance
-    | filter namespaceName == "app00006805-accums-adjudication"
-    | fields check_id = id
-]
-| append [
-    fetch dt.entity.cloud_application_namespace
-    | filter namespaceName == "app00006805-accums-adjudication"
-    | fields check_id = id
-]
-| join [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
-    | expand affected_entity_ids
-    | fieldsAdd clamped_start = if(event.start < toTimestamp($dt_timeframe_from), toTimestamp($dt_timeframe_from), else: event.start)
-    | fieldsAdd clamped_end = if(isNotNull(event.end), if(event.end > toTimestamp($dt_timeframe_to), toTimestamp($dt_timeframe_to), else: event.end), else: toTimestamp($dt_timeframe_to))
-    | fieldsAdd downtime_ms = (clamped_end - clamped_start) / 1ms
-    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
-], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
-| summarize total_downtime_ms = sum(p.downtime_ms)
-| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
-| fieldsAdd used_hrs = total_downtime_ms / 3600000
-| fields Downtime_Used = round(used_hrs, decimals:2)
-
-
