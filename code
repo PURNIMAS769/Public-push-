@@ -1,19 +1,11 @@
-fetch events, from:-30d
-| filter event.kind == "CUSTOM_INFO" or event.kind == "DEPLOYMENT_EVENT" or contains(event.type, "DEPLOYMENT") or contains(event.type, "CHANGE")
-| filter in(dt.entity.cloud_application, classicEntitySelector("type(cloud_application),tag(\"APMID:APP00006805\")")) or in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| fields timestamp, event.type, event.name, dt.entity.cloud_application, dt.entity.service
-| limit 20
-
-
-
-fetch events, from:-30d
-| filter in(dt.entity.cloud_application, classicEntitySelector("type(cloud_application),tag(\"APMID:APP00006805\")"))
-| summarize count(), by:{event.type}
-| sort count() desc
-
-
-fetch events, from:-30d
-| filter contains(toString(event.type), "KUBERNETES") or contains(toString(event.type), "ROLLOUT") or contains(toString(event.type), "DEPLOYMENT")
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-| fields timestamp, event.type, event.name, k8s.namespace.name
-| limit 20
+fetch dt.davis.events, from:-30d
+| filter event.type == "CUSTOM_INFO"
+| expand affected_entity_ids
+| lookup [
+    fetch dt.entity.cloud_application
+    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
+    | fields id, entity.name
+], sourceField: affected_entity_ids, lookupField: id, fields: { deployment_name = entity.name }
+| filter isNotNull(deployment_name)
+| summarize event_count = count(), by:{event.name}
+| sort event_count desc
