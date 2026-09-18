@@ -1,7 +1,8 @@
 fetch dt.entity.process_group_instance, from:-24h
 | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
 | fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else: false)
-| fieldsAdd pg_name = belongs_to[dt.entity.process_group]
+| fieldsAdd pg = belongs_to[dt.entity.process_group]
+| expand pg
 | join [
     fetch dt.davis.problems, from:-24h
     | filter event.status == "ACTIVE"
@@ -12,8 +13,8 @@ fetch dt.entity.process_group_instance, from:-24h
 | summarize
     any_running = countIf(is_running == true) > 0,
     open_problem_count = sum(open_problem_count),
-    by:{pg_name}
+    by:{pg}
 | fieldsAdd state = if(any_running == false, "DOWN (No Running Instance)", else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else: "HEALTHY"))
-| fieldsAdd pg_display_name = entityName(pg_name)
+| fieldsAdd pg_display_name = entityName(pg)
 | fields pg_display_name, state
 | sort state desc
