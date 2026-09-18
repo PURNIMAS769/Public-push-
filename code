@@ -1,6 +1,7 @@
-fetch dt.entity.host
-| filter contains(toString(tags), "APMID:APP00006805") or contains(toString(tags), "app00006805")
-| fieldsAdd entity.name, id, tags
+fetch dt.entity.process_group_instance
+| filter contains(toString(tags), "APMID:APP00006805")
+| fieldsAdd entity.name, runs_on
+| limit 30
 
-timeseries avg(dt.host.cpu.usage), avg(dt.host.memory.usage), by:{dt.entity.host}, from:now()-24h
-| filter in(dt.entity.host, array("<host-ids-from-query-1>"))
+timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name}, from:now()-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
