@@ -8,5 +8,13 @@ timeseries
 | fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
 | filter total_sum > 0
 | fieldsAdd availability_pct = round((1 - (failed_sum / total_sum)) * 100, decimals:2)
-| fields service_name, dt.entity.service, total_sum, failed_sum, availability_pct
+| join [
+    fetch dt.davis.problems, from:-24h
+    | filter event.status == "ACTIVE"
+    | expand affected_entity_ids
+    | summarize open_problem_count = countDistinct(event.id), by:{affected_entity_ids}
+], kind:leftOuter, on:{left[dt.entity.service] == right[affected_entity_ids]}, prefix:"p."
+| fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
+| fieldsAdd health_status = if(open_problem_count > 0, "⚠️ ALERT ACTIVE", else: if(availability_pct < 99.9, "⚠️ DEGRADED", else: "✅ HEALTHY"))
+| fields service_name, dt.entity.service, total_sum, failed_sum, availability_pct, open_problem_count, health_status
 | sort availability_pct asc
