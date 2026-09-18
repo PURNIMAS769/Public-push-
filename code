@@ -1,8 +1,3 @@
 fetch dt.entity.service
-| filter id == "SERVICE-DD6661CA37FE7FD4"
-| fieldsAdd entity.name, called_by
-
-
-fetch dt.entity.service
-| filter id == "SERVICE-DD6661CA37FE7FD4"
-| fieldsAdd entity.name, receives_from
+| filter in(id, array("SERVICE-81ADD1C5AEC686A7", "SERVICE-71CBC582838AA7B5"))
+| fieldsAdd entity.name, id, tags
