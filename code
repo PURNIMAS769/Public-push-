@@ -1,16 +1,9 @@
-timeseries disk_usage = avg(dt.kubernetes.node.filesystem_used), disk_total = avg(dt.kubernetes.node.filesystem_capacity),
-    by:{k8s.node.name},
-    filter: k8s.namespace.name == "app00006805-accums-adjudication",
+timeseries pvc_used = avg(dt.kubernetes.persistentvolumeclaim.used), pvc_capacity = avg(dt.kubernetes.persistentvolumeclaim.capacity),
+    by:{k8s.namespace.name},
     from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
 
 
 fetch dt.entity.cloud_application_instance
 | filter namespaceName == "app00006805-accums-adjudication"
-| fieldsAdd entity.name, volumes
-| limit 5
-
-
-
-fetch metric.series
-| filter contains(metric.key, "kubernetes") and (contains(metric.key, "disk") or contains(metric.key, "filesystem") or contains(metric.key, "volume") or contains(metric.key, "storage"))
-| summarize count(), by:{metric.key}
+| limit 1
