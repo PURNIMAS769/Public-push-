@@ -1,33 +1,5 @@
-Section 6: Security & Token Validation
-
-
-SSO/OAuth Gateway Request Volume Trend (by endpoint)
-
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "p-sso-sg-prd-svc.hcscint.net"
-| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
-| summarize op_count = count(), by:{endpoint}
-| sort op_count desc
-
-
-SSO/OAuth Response Time by Endpoint (Table)
-
-
-
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "p-sso-sg-prd-svc.hcscint.net"
-| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
-| summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{endpoint}
-| sort avg_duration_ms desc
-
-Auth Failure/Error Rate (if status codes available)
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "p-stv-ig-prd-svc.hcscint.net" or server.address == "p-sso-sg-prd-svc.hcscint.net"
-| summarize total = count(), errors = countIf(isNotNull(error) or contains(toString(status), "error")), by:{server.address}
-| fieldsAdd error_rate_pct = round((errors / total) * 100, decimals:2)
-
-
-
+| fields span.name, http.response.status_code, status.code, error, span.status
+| limit 10
