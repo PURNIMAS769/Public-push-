@@ -1,9 +1,24 @@
-Discovery Query 1 — Does an Availability Group entity exist for these SQL hosts?
-fetch dt.entity.sql_server_availability_group
-| fields id, ag_name = entity.name
-
-Discovery Query 2 — Confirm replication/failover metrics are collecting
+Discovery Query — see the raw dimensions and values
 fetch metric.series
-| filter contains(metric.key, "sql-server") and (contains(metric.key, "replicat") or contains(metric.key, "failover") or contains(metric.key, "avail"))
-| summarize count(), by:{metric.key}
-| sort metric.key asc
+| filter metric.key == "sql-server.always-on.ar.failoverMode"
+| fields metric.key, dimensions
+| limit 5
+
+Try building the tile directly (state-based, using entityAttr or raw dimension pull)
+timeseries availability_mode = avg(`sql-server.always-on.ar.availabilityMode`),
+           failover_mode = avg(`sql-server.always-on.ar.failoverMode`),
+  by:{`dt.entity.sql:sql_server_instance`}
+| fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
+| parse instance_name, "LD 'via: ' LD:host_fqdn ':'"
+| filter in(lower(host_fqdn), array(
+    "pftwswifscq03.prd.hcscad.net",
+    "pwauswifsq0101.prd.hcscad.net",
+    "pwauswifscq03.prd.hcscad.net",
+    "pwauswifsq0102.prd.hcscad.net",
+    "pwauswifscq04.prd.hcscad.net"
+  ))
+| fieldsAdd avail_mode_val = arrayLast(availability_mode)
+| fieldsAdd failover_mode_val = arrayLast(failover_mode)
+| fields host_fqdn, avail_mode_val, failover_mode_val
+
+Important note on i
