@@ -1,6 +1,50 @@
+Section 7: Upstream/Downstream Dependencies
+
+Tile 1 — BDM Request Volume Trend
+
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "p-stv-ig-prd-svc.hcscint.net" or server.address == "p-sso-sg-prd-svc.hcscint.net"
+| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
+| summarize op_count = count(), by:{bin(start_time, 15m)}
+| sort start_time asc
+
+BDM Response Time Trend
+
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
+| summarize avg_duration_ms = avg(duration)/1000, by:{bin(start_time, 15m)}
+| sort start_time asc
+
+
+BDM Request Volume & Response Time by Endpoint (Table)
+
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
+| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
+| summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{endpoint}
+| sort op_count desc
+
+Claims Member Service Call Volume (low-volume, secondary tile)
+
+fetch spans, from:-24h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "p-app00006809-claimsmembersvc-ga-prd.hcscint.net"
+| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
+| summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{endpoint}
+| sort op_count desc
+
+
+Tile 5 — BDM/Claims Member Failure Rate
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local" or server.address == "p-app00006809-claimsmembersvc-ga-prd.hcscint.net"
 | fieldsAdd is_error = if(http.response.status_code >= 400, 1, else: 0)
 | summarize total = count(), errors = sum(is_error), by:{server.address}
 | fieldsAdd error_rate_pct = round((errors / total) * 100, decimals:2)
+
+
+
+
+
