@@ -1,30 +1,6 @@
-timeseries total_requests = sum(dt.service.request.count), by:{dt.entity.service}, from:-24h
+timeseries avg_response_time = avg(dt.service.request.response_time), from:-24h
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_sum = arraySum(total_requests)
-| filter total_sum > 0
-| fields service_name, total_sum
-| sort total_sum desc
 
 
-timeseries avg_response_time = avg(dt.service.request.response_time), by:{dt.entity.service}, from:-24h
+timeseries total_requests = sum(dt.service.request.count), from:-24h
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd avg_rt_ms = round(arrayAvg(avg_response_time) / 1000, decimals:2)
-| filter isNotNull(avg_rt_ms)
-| fields service_name, avg_rt_ms
-| sort avg_rt_ms desc
-
-
-timeseries
-    total_requests = sum(dt.service.request.count),
-    failed_requests = sum(dt.service.request.failure_count),
-    by:{dt.entity.service},
-    from:-24h
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
-| filter total_sum > 0
-| fieldsAdd failure_rate_pct = round((failed_sum / total_sum) * 100, decimals:2)
-| fields service_name, total_sum, failed_sum, failure_rate_pct
-| sort failure_rate_pct desc
