@@ -1,16 +1,11 @@
-fetch metric.series
-| filter contains(metric.key, "jvm") or contains(metric.key, "dt.process")
-| summarize count(), by:{metric.key}
-
-
-timeseries avg(dt.process.cpu.usage), avg(dt.process.memory.usage), by:{dt.entity.process_group_instance}, from:-24h
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
-
-
-
-fetch dt.davis.events, from:-10d
-| filter event.type == "CUSTOM_INFO"
-| filter contains(event.name, "restart") or contains(event.name, "Restart") or contains(event.name, "crash") or contains(event.name, "Crash")
-| filter in("APMID:APP00006805", entity_tags)
-| fields event.name, event.start
+fetch dt.davis.events, from:-12d
+| expand affected_entity_ids
+| filter contains(event.name, "restart") or contains(event.name, "Restart")
+| lookup [
+    fetch dt.entity.process_group_instance
+    | filter arrayIndexOf(tags, "APMID:APP00006805") > -1
+    | fields id, entity.name
+], sourceField: affected_entity_ids, lookupField: id, fields: { process_name = entity.name }
+| filter isNotNull(process_name)
+| fields event.name, process_name, timestamp
 | limit 20
