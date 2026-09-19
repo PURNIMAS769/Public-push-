@@ -1,12 +1,16 @@
-Let's build Interpretation A — per-NIC breakdown
-timeseries drop_rx = avg(dt.host.net.nic.packets.dropped.rx, scalar:true),
+Diagnostic — raw data first, no entityName(), no rounding
+timeseries drop_rx = avg(dt.host.net.nic.packets.dropped.rx),
   by:{dt.entity.host, dt.entity.network_interface},
   filter: dt.entity.host in [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
     | fields id
   ]
-| fieldsAdd hostname = entityName(dt.entity.host), nic_name = entityName(dt.entity.network_interface)
-| fieldsAdd drop_rx = round(drop_rx, decimals:2)
-| fields hostname, nic_name, drop_rx
-| sort drop_rx desc
+| fields dt.entity.host, dt.entity.network_interface, drop_rx
+| limit 20
+
+f that returns rows — find the correct entity type name for the NIC dimension
+fetch metric.series
+| filter metric.key == "dt.host.net.nic.packets.dropped.rx"
+| fields metric.key, dimensions
+| limit 5
