@@ -1,12 +1,9 @@
-xist for SCCM hosts
-fetch logs, from:-24h
-| filter contains(log.source, "Application") or contains(dt.system.bucket, "windows")
-| filter contains(content, "MsiInstaller") or contains(content, "1033") or contains(content, "1034")
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
-    | fields id
-  ], sourceField:dt.entity.host, lookupField:id, prefix:"hh_"
-| filter isNotNull(hh_id)
-| fields content, log.source, timestamp
-| limit 20
+Discovery Query 1 — Does an Availability Group entity exist for these SQL hosts?
+fetch dt.entity.sql_server_availability_group
+| fields id, ag_name = entity.name
+
+Discovery Query 2 — Confirm replication/failover metrics are collecting
+fetch metric.series
+| filter contains(metric.key, "sql-server") and (contains(metric.key, "replicat") or contains(metric.key, "failover") or contains(metric.key, "avail"))
+| summarize count(), by:{metric.key}
+| sort metric.key asc
