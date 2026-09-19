@@ -1,3 +1,13 @@
-fetch metric.series
-| filter metric.key == "db2.availability" or metric.key == "db2.deadlocks.count" or metric.key == "db2.cpu_usage_total"
-| limit 3
+fetch dt.entity.custom_device
+| filter contains(entity.name, "odmprdi5") or contains(entity.name, "odsprdi1") or contains(entity.name, "pdprdi5") or contains(toString(tags), "sql-db2")
+| fields entity.name, id, tags
+
+
+fetch dt.entity.custom_device
+| filter contains(toString(tags), "APMID:APP00006805")
+| fields entity.name, id, tags
+
+
+fetch dt.entity.service
+| filter id == "SERVICE-F65400876ACCE3AA"
+| fieldsAdd calls, called_by
