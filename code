@@ -5,8 +5,8 @@ Token Validation Gateway Request Volume Trend
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "p-stv-ig-prd-svc.hcscint.net"
-| summarize op_count = count(), by:{bin(timestamp, 15m)}
-| sort timestamp asc
+| summarize op_count = count(), by:{bin(start_time, 15m)}
+| sort start_time asc
 
 Token Validation Gateway Response Time Trend
 
