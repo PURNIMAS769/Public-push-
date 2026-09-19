@@ -1,6 +1,8 @@
-timeseries avg_response_time = avg(dt.service.request.response_time), from:-24h
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+timeseries total_requests = sum(dt.service.request.count),
+    filter: in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")")),
+    from:-24h
 
 
-timeseries total_requests = sum(dt.service.request.count), from:-24h
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+timeseries avg_response_time = avg(dt.service.request.response_time),
+    filter: in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")")),
+    from:-24h
