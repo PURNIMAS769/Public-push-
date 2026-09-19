@@ -1,9 +1,8 @@
-fetch dt.entity.disk
-| fieldsAdd host_ref = belongs_to[`dt.entity.host`]
-| fields id, entity.name, host_ref
-| limit 5
-
-fetch dt.entity.disk
-| fieldsAdd db2_host_ref = belongs_to[`dt.entity.sql:db2_host`]
-| filter isNotNull(db2_host_ref)
-| summarize count()
+fetch `dt.entity.sql:db2_host`
+| fields id, db2_hostname = Hostname
+| lookup [
+    fetch dt.entity.host
+    | fields id, real_host_id = id, real_hostname = entity.name
+  ], sourceField:db2_hostname, lookupField:real_hostname, prefix:""
+| filter isNotNull(real_host_id)
+| fields db2_hostname, id, real_host_id
