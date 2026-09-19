@@ -1,19 +1,19 @@
-iscovery — find the real dimension name for Always On metrics
-fetch metric.series
-| filter metric.key == "sql-server.always-on.ar.role"
-| fields metric.key, dimensions
-| limit 5
 
-know MSSQL often surfaces this way)
 timeseries role = avg(`sql-server.always-on.ar.role`),
-  by:{dt.entity.custom_device}
-| fieldsAdd device_name = entityName(dt.entity.custom_device)
-| fields device_name, role
+  by:{`availability.group.name`, `availability.replica.availability_mode`}
+| fields `availability.group.name`, `availability.replica.availability_mode`, role
 | limit 20
 
-Or — try grouping by host directly
+
+
 timeseries role = avg(`sql-server.always-on.ar.role`),
-  by:{dt.entity.host}
-| fieldsAdd hostname = entityName(dt.entity.host)
-| fields hostname, role
+  by:{`availability.group.name`}
+| fields `availability.group.name`, role
+| limit 20
+
+
+
+timeseries role = avg(`sql-server.always-on.ar.role`),
+  by:{`availability.replica.server_name`}
+| fields `availability.replica.server_name`, role
 | limit 20
