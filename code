@@ -1,22 +1,33 @@
-timeseries avg(dt.runtime.jvm.gc.suspension_time), by:{dt.entity.process_group_instance}, from:-24h
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-| fieldsAdd latest_suspension = arrayLast(`avg(dt.runtime.jvm.gc.suspension_time)`)
-| fields process_name, latest_suspension
-| sort latest_suspension desc
+fetch metric.series
+| filter contains(metric.key, "dt.service.request") or contains(metric.key, "dt.service.messaging")
+| summarize count(), by:{metric.key}
+
+timeseries
+    total_requests = sum(dt.service.request.count),
+    failed_requests = sum(dt.service.request.failure_count),
+    avg_response_time = avg(dt.service.request.response_time),
+    by:{dt.entity.service},
+    from:-24h
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| fieldsAdd service_name = entityName(dt.entity.service)
+| fieldsAdd total_sum = arraySum(total_requests)
+| filter total_sum > 0
 
 
 
-timeseries avg(dt.runtime.jvm.gc.suspension_time), from:-24h
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
+timeseries
+    msg_process = sum(dt.service.messaging.process.count),
+    msg_publish = sum(dt.service.messaging.publish.count),
+    msg_receive = sum(dt.service.messaging.receive.count),
+    by:{dt.entity.service},
+    from:-24h
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| fieldsAdd service_name = entityName(dt.entity.service)
 
 
-timeseries avg(dt.runtime.jvm.gc.suspension_time), by:{dt.entity.process_group_instance}, from:-24h
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
 
-timeseries avg(dt.runtime.jvm.gc.collection_time), by:{dt.entity.process_group_instance}, from:-24h
-| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-
-
+fetch spans
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter span.kind == "server"
+| summarize count(), avg(duration), by:{http.response.status_code}
+| limit 20
