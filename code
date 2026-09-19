@@ -1,13 +1,35 @@
-fetch dt.entity.custom_device
-| filter contains(entity.name, "odmprdi5") or contains(entity.name, "odsprdi1") or contains(entity.name, "pdprdi5") or contains(toString(tags), "sql-db2")
-| fields entity.name, id, tags
+timeseries total_requests = sum(dt.service.request.count), from:-24h
+| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
 
 
-fetch dt.entity.custom_device
-| filter contains(toString(tags), "APMID:APP00006805")
-| fields entity.name, id, tags
+timeseries avg_response_time = avg(dt.service.request.response_time), from:-24h
+| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
 
 
-fetch dt.entity.service
-| filter id == "SERVICE-F65400876ACCE3AA"
-| fieldsAdd calls, called_by
+timeseries
+    total_requests = sum(dt.service.request.count),
+    failed_requests = sum(dt.service.request.failure_count),
+    from:-24h
+| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
+| fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
+| fieldsAdd failure_rate_pct = round((failed_sum / total_sum) * 100, decimals:2)
+
+
+timeseries avg(dt.osservice.availability), from:-24h
+| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
+
+
+fetch spans, from:-24h
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter span.name == "CONNECT DP0C" or span.name == "SELECT DP0C" or span.name == "PREPARE DP0C"
+| summarize op_count = count(), by:{dt.entity.service, span.name}
+| fieldsAdd service_name = entityName(dt.entity.service)
+| fields service_name, span.name, op_count
+| sort op_count desc
+
+
+fetch spans, from:-24h
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter span.name == "CONNECT DP0C" or span.name == "SELECT DP0C" or span.name == "PREPARE DP0C"
+| summarize op_count = count(), by:{bin(timestamp, 1h), span.name}
+| sort timestamp asc
