@@ -1,19 +1,24 @@
 
+Final Failover Status Tile
 timeseries role = avg(`sql-server.always-on.ar.role`),
-  by:{`availability.group.name`, `availability.replica.availability_mode`}
-| fields `availability.group.name`, `availability.replica.availability_mode`, role
-| limit 20
+           connected = avg(`sql-server.always-on.ar.connectedState`),
+           sync_health = avg(`sql-server.always-on.db.synchronizationHealth`),
+           failover_mode = avg(`sql-server.always-on.ar.failoverMode`),
+  by:{`availability.group.name`, `availability.replica.name`}
 
+| filter contains(lower(`availability.group.name`), "pwauswsq")
+   or contains(lower(`availability.group.name`), "pftwswifsq")
+   or contains(lower(`availability.group.name`), "pwauswifsq")
 
+| fieldsAdd role_val = round(arrayLast(role), decimals:0)
+| fieldsAdd connected_val = round(arrayLast(connected), decimals:0)
+| fieldsAdd sync_health_val = round(arrayLast(sync_health), decimals:0)
+| fieldsAdd failover_val = round(arrayLast(failover_mode), decimals:0)
 
-timeseries role = avg(`sql-server.always-on.ar.role`),
-  by:{`availability.group.name`}
-| fields `availability.group.name`, role
-| limit 20
+| fieldsAdd role_label = if(role_val == 1, "PRIMARY", else: if(role_val == 2, "SECONDARY", else: "UNKNOWN"))
+| fieldsAdd connection_label = if(connected_val == 1, "Connected", else: "Disconnected")
+| fieldsAdd health_label = if(sync_health_val == 2, "✅ Healthy", else: if(sync_health_val == 1, "⚠️ Partially Healthy", else: "🔴 Not Healthy"))
+| fieldsAdd failover_label = if(failover_val == 0, "Automatic", else: "Manual")
 
-
-
-timeseries role = avg(`sql-server.always-on.ar.role`),
-  by:{`availability.replica.server_name`}
-| fields `availability.replica.server_name`, role
-| limit 20
+| fields `availability.group.name`, `availability.replica.name`, role_label, connection_label, health_label, failover_label
+| sort role_label asc
