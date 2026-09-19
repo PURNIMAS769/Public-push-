@@ -1,8 +1,8 @@
-timeseries requests = sum(dt.service.request.count),
+timeseries response_time = avg(dt.service.request.response_time),
     by:{dt.entity.service}
     //,from:-24h
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_requests = arraySum(requests)
-| filter total_requests > 0
-| fields timeframe, interval, service_name, requests, dt.entity.service
+| fieldsAdd avg_response = arrayAvg(response_time)
+| filter isNotNull(avg_response)
+| fields timeframe, interval, service_name, response_time, dt.entity.service
