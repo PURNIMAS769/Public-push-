@@ -1,8 +1,3 @@
-timeseries response_time = avg(dt.service.request.response_time),
-    by:{dt.entity.service}
-    //,from:-24h
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd avg_response = arrayAvg(response_time)
-| filter isNotNull(avg_response)
-| fields timeframe, interval, service_name, response_time, dt.entity.service
+fetch metric.series
+| filter metric.key == "db2.availability" or metric.key == "db2.deadlocks.count" or metric.key == "db2.cpu_usage_total"
+| limit 3
