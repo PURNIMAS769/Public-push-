@@ -13,8 +13,8 @@ Token Validation Gateway Response Time Trend
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "p-stv-ig-prd-svc.hcscint.net"
-| summarize avg_duration = avg(duration), by:{bin(timestamp, 15m)}
-| sort timestamp asc
+| summarize avg_duration = avg(duration), by:{bin(start_time, 15m)}
+| sort start_time asc
 
 
 SSO/OAuth Gateway Request Volume Trend (by endpoint)
