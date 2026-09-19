@@ -1,61 +1,16 @@
-Deployment Status (Desired vs Running Pods)
+timeseries disk_usage = avg(dt.kubernetes.node.filesystem_used), disk_total = avg(dt.kubernetes.node.filesystem_capacity),
+    by:{k8s.node.name},
+    filter: k8s.namespace.name == "app00006805-accums-adjudication",
+    from:-24h
 
-timeseries desired = avg(dt.kubernetes.workload.pods_desired), running = avg(dt.kubernetes.pods), by:{k8s.workload.name}, from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
 
-
-Container CPU Utilization + Throttling
-
-timeseries cpu_usage = avg(dt.kubernetes.container.cpu_usage), cpu_throttled = avg(dt.kubernetes.container.cpu_throttled), from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-
-Container Memory Utilization
-
-timeseries memory_usage = avg(dt.kubernetes.container.memory_working_set), from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-
-Container Restart Tracker (relocated from Section 3)
-
-timeseries restarts_7d_arr = sum(dt.kubernetes.container.restarts), by:{k8s.pod.name, k8s.namespace.name, k8s.node.name}, from:-7d
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-| fieldsAdd restarts_7d = arraySum(restarts_7d_arr)
-| join [
-    timeseries restarts_24h_arr = sum(dt.kubernetes.container.restarts), by:{k8s.pod.name}, from:-24h
-    | fieldsAdd restarts_24h = arraySum(restarts_24h_arr)
-], kind:leftOuter, on:{left[k8s.pod.name] == right[k8s.pod.name]}, prefix:"w24."
-| fieldsAdd restarts_24h = if(isNull(w24.restarts_24h), 0, else: w24.restarts_24h)
-| fieldsAdd `Status` =
-    if(restarts_24h >= 3, "🔴 Error (3+ restarts in 24h)",
-    else: if(restarts_24h >= 1 or restarts_7d >= 1, "🟡 Restarted Recently",
-    else: "🟢 Stable"))
-| sort restarts_24h desc, restarts_7d desc
-| fields `Node` = k8s.node.name, `Pod` = k8s.pod.name, `Restarts (7d)` = restarts_7d, `Restarts (24h)` = restarts_24h, `Status`
-| limit 20
-
-Namespace CPU/Memory Requests vs Limits
-timeseries requests_cpu = avg(dt.kubernetes.container.requests_cpu), limits_cpu = avg(dt.kubernetes.container.limits_cpu), requests_memory = avg(dt.kubernetes.container.requests_memory), limits_memory = avg(dt.kubernetes.container.limits_memory), from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-
-Pod Count (Total vs Running)
-
-timeseries total_pods = avg(dt.kubernetes.pods), from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-
-Pod Network Throughput (Rx/Tx)
-timeseries rx = avg(dt.kubernetes.pod.network_received_data), tx = avg(dt.kubernetes.pod.network_transmitted_data), from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-
-Pod Network Health (packet drops)
-
-timeseries rx_dropped = sum(dt.kubernetes.pod.network_received_packets_dropped), tx_dropped = sum(dt.kubernetes.pod.network_transmitted_packets_dropped), from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
-
-Namespace Resource Quota Utilization
-
-timeseries used_cpu = avg(dt.kubernetes.resourcequota.cpu.used), hard_cpu = avg(dt.kubernetes.resourcequota.cpu.hard), used_memory = avg(dt.kubernetes.resourcequota.memory.used), hard_memory = avg(dt.kubernetes.resourcequota.memory.hard), from:-24h
-| filter k8s.namespace.name == "app00006805-accums-adjudication"
+fetch dt.entity.cloud_application_instance
+| filter namespaceName == "app00006805-accums-adjudication"
+| fieldsAdd entity.name, volumes
+| limit 5
 
 
 
-
-
+fetch metric.series
+| filter contains(metric.key, "kubernetes") and (contains(metric.key, "disk") or contains(metric.key, "filesystem") or contains(metric.key, "volume") or contains(metric.key, "storage"))
+| summarize count(), by:{metric.key}
