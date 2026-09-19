@@ -1,8 +1,9 @@
+Token Validation Gateway Volume Forecast
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "p-stv-ig-prd-svc.hcscint.net"
 | makeTimeseries op_count = count(), interval:15m
-
+BDM Request Volume Forecast
 
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
