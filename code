@@ -1,11 +1,3 @@
-Token Validation Gateway Volume Forecast
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "p-stv-ig-prd-svc.hcscint.net"
-| makeTimeseries op_count = count(), interval:15m
-BDM Request Volume Forecast
-
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
-| makeTimeseries op_count = count(), interval:15m
+fetch dt.entity.disk
+| filter matchesValue(runs_on, "CUSTOM_DEVICE")
+| summarize count()
