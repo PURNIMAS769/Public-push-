@@ -1,31 +1,13 @@
-timeseries total_requests = sum(dt.service.request.count),
-    filter: dt.entity.service == "SERVICE-F65400876ACCE3AA",
-    from:-24h
-
-
-timeseries avg_response_time = avg(dt.service.request.response_time),
-    filter: dt.entity.service == "SERVICE-F65400876ACCE3AA",
-    from:-24h
-
-timeseries
-    total_requests = sum(dt.service.request.count),
-    failed_requests = sum(dt.service.request.failure_count),
-    filter: dt.entity.service == "SERVICE-F65400876ACCE3AA",
-    from:-24h
-| fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
-| fieldsAdd failure_rate_pct = round((failed_sum / total_sum) * 100, decimals:2)
-
-timeseries avg(dt.osservice.availability), from:-24h
-| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
-
-
-fetch spans, from:-24h
+fetch spans, from:-24h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter span.name == "CONNECT DP0C" or span.name == "SELECT DP0C" or span.name == "PREPARE DP0C"
 | summarize op_count = count(), by:{dt.entity.service, span.name}
 | fieldsAdd service_name = entityName(dt.entity.service)
-| fields service_name, span.name, op_count
-| sort op_count desc
+| fieldsAdd op_type = if(span.name == "CONNECT DP0C", "CONNECT", else: if(span.name == "SELECT DP0C", "SELECT", else: "PREPARE"))
+| fields service_name, op_type, op_count
+| summarize CONNECT = takeFirstIf(op_count, op_type == "CONNECT"), SELECT = takeFirstIf(op_count, op_type == "SELECT"), PREPARE = takeFirstIf(op_count, op_type == "PREPARE"), by:{service_name}
+| fieldsAdd Total = (if(isNull(CONNECT),0,else:CONNECT)) + (if(isNull(SELECT),0,else:SELECT)) + (if(isNull(PREPARE),0,else:PREPARE))
+| sort Total desc
 
 
 fetch spans, from:-24h
