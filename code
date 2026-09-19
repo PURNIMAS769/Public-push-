@@ -1,19 +1,19 @@
-timeseries total_requests = sum(dt.service.request.count), from:-24h
-| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
+timeseries total_requests = sum(dt.service.request.count),
+    filter: dt.entity.service == "SERVICE-F65400876ACCE3AA",
+    from:-24h
 
 
-timeseries avg_response_time = avg(dt.service.request.response_time), from:-24h
-| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
-
+timeseries avg_response_time = avg(dt.service.request.response_time),
+    filter: dt.entity.service == "SERVICE-F65400876ACCE3AA",
+    from:-24h
 
 timeseries
     total_requests = sum(dt.service.request.count),
     failed_requests = sum(dt.service.request.failure_count),
+    filter: dt.entity.service == "SERVICE-F65400876ACCE3AA",
     from:-24h
-| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
 | fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
 | fieldsAdd failure_rate_pct = round((failed_sum / total_sum) * 100, decimals:2)
-
 
 timeseries avg(dt.osservice.availability), from:-24h
 | filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
