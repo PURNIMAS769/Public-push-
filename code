@@ -1,8 +1,12 @@
-timeseries avg(dt.process.cpu.usage), by:{dt.entity.process_group_instance}, from:-24h
+timeseries avg(dt.runtime.jvm.gc.suspension_time), avg(dt.runtime.jvm.gc.collection_time), by:{dt.entity.process_group_instance}, from:-24h
 | filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
 | fieldsAdd process_name = entityName(dt.entity.process_group_instance)
 
 
-timeseries avg(dt.process.memory.usage), by:{dt.entity.process_group_instance}, from:-24h
+timeseries avg(dt.profiling.jvm.threads.count), by:{dt.entity.process_group_instance}, from:-24h
+| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+
+timeseries avg(dt.process.handles.file_descriptors.percent_used), by:{dt.entity.process_group_instance}, from:-24h
 | filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
 | fieldsAdd process_name = entityName(dt.entity.process_group_instance)
