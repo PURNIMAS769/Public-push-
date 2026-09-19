@@ -1,31 +1,26 @@
 Section 6: Security & Token Validation
 
-Token Validation Gateway Request Volume Trend
-
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "p-stv-ig-prd-svc.hcscint.net"
-| summarize op_count = count(), by:{bin(start_time, 15m)}
-| sort start_time asc
-
-Token Validation Gateway Response Time Trend
-
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "p-stv-ig-prd-svc.hcscint.net"
-| summarize avg_duration = avg(duration), by:{bin(start_time, 15m)}
-| sort start_time asc
-
 
 SSO/OAuth Gateway Request Volume Trend (by endpoint)
 
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "p-sso-sg-prd-svc.hcscint.net"
-| summarize op_count = count(), by:{span.name}
+| fieldsAdd endpoint = concat(toString(span.name), " ", toString(http.route))
+| summarize op_count = count(), by:{endpoint}
 | sort op_count desc
 
+
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "p-sso-sg-prd-svc.hcscint.net"
+| fields span.name, http.route, url.path, http.target, http.url
+| limit 5
+
+
 SSO/OAuth Response Time by Endpoint (Table)
+
+
 
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
