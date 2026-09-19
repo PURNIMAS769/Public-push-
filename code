@@ -1,3 +1,9 @@
+describe dt.entity.disk
+
+
 fetch dt.entity.disk
-| filter matchesValue(runs_on, "CUSTOM_DEVICE")
+| summarize count()
+
+fetch dt.entity.custom_device
+| filter contains(entity.name, "db2") or matchesValue(id, "CUSTOM_DEVICE")
 | summarize count()
