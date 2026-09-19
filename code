@@ -1,16 +1,12 @@
-Diagnostic — raw data first, no entityName(), no rounding
-timeseries drop_rx = avg(dt.host.net.nic.packets.dropped.rx),
-  by:{dt.entity.host, dt.entity.network_interface},
-  filter: dt.entity.host in [
+xist for SCCM hosts
+fetch logs, from:-24h
+| filter contains(log.source, "Application") or contains(dt.system.bucket, "windows")
+| filter contains(content, "MsiInstaller") or contains(content, "1033") or contains(content, "1034")
+| lookup [
     fetch dt.entity.host
     | filter arrayIndexOf(tags, "APMID:APP00005497") != -1
     | fields id
-  ]
-| fields dt.entity.host, dt.entity.network_interface, drop_rx
+  ], sourceField:dt.entity.host, lookupField:id, prefix:"hh_"
+| filter isNotNull(hh_id)
+| fields content, log.source, timestamp
 | limit 20
-
-f that returns rows — find the correct entity type name for the NIC dimension
-fetch metric.series
-| filter metric.key == "dt.host.net.nic.packets.dropped.rx"
-| fields metric.key, dimensions
-| limit 5
