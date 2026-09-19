@@ -1,26 +1,10 @@
-Query 1 — DP0C Request Volume Forecast (base query)
-timeseries total_requests = sum(dt.service.request.count), from:-7d
-| filter dt.entity.service == "SERVICE-F65400876ACCE3AA"
-
-Query 2 — Namespace CPU/Memory Utilization Forecast (base query)
-
-timeseries cpu_usage = avg(dt.kubernetes.container.cpu_usage), memory_usage = avg(dt.kubernetes.container.memory_working_set),
-    filter: k8s.namespace.name == "app00006805-accums-adjudication",
-    from:-7d
-
-Query 3 — Token Validation Gateway Volume Forecast (base query)
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "p-stv-ig-prd-svc.hcscint.net"
-| summarize op_count = count(), by:{bin(start_time, 15m)}
-| sort start_time asc
+| makeTimeseries op_count = count(), interval:15m
 
 
-BDM Request Volume Forecast (base query)
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
-| summarize op_count = count(), by:{bin(start_time, 15m)}
-| sort start_time asc
-
-
+| makeTimeseries op_count = count(), interval:15m
