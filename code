@@ -1,24 +1,13 @@
-Discovery Query — see the raw dimensions and values
-fetch metric.series
-| filter metric.key == "sql-server.always-on.ar.failoverMode"
-| fields metric.key, dimensions
-| limit 5
-
-Try building the tile directly (state-based, using entityAttr or raw dimension pull)
 timeseries availability_mode = avg(`sql-server.always-on.ar.availabilityMode`),
-           failover_mode = avg(`sql-server.always-on.ar.failoverMode`),
-  by:{`dt.entity.sql:sql_server_instance`}
-| fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| parse instance_name, "LD 'via: ' LD:host_fqdn ':'"
-| filter in(lower(host_fqdn), array(
-    "pftwswifscq03.prd.hcscad.net",
-    "pwauswifsq0101.prd.hcscad.net",
-    "pwauswifscq03.prd.hcscad.net",
-    "pwauswifsq0102.prd.hcscad.net",
-    "pwauswifscq04.prd.hcscad.net"
-  ))
-| fieldsAdd avail_mode_val = arrayLast(availability_mode)
-| fieldsAdd failover_mode_val = arrayLast(failover_mode)
-| fields host_fqdn, avail_mode_val, failover_mode_val
+           failover_mode = avg(`sql-server.always-on.ar.failoverMode`)
 
-Important note on i
+
+timeseries availability_mode = avg(`sql-server.always-on.ar.availabilityMode`), by:{dt.entity.custom_device}
+
+
+
+fetch metric.series
+| filter contains(metric.key, "always-on")
+| fieldsAdd sample = arrayFirst(metric.key)
+| fields metric.key
+| limit 10
