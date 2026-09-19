@@ -1,9 +1,9 @@
-describe dt.entity.disk
-
+fetch dt.entity.disk
+| fieldsAdd host_ref = belongs_to[`dt.entity.host`]
+| fields id, entity.name, host_ref
+| limit 5
 
 fetch dt.entity.disk
-| summarize count()
-
-fetch dt.entity.custom_device
-| filter contains(entity.name, "db2") or matchesValue(id, "CUSTOM_DEVICE")
+| fieldsAdd db2_host_ref = belongs_to[`dt.entity.sql:db2_host`]
+| filter isNotNull(db2_host_ref)
 | summarize count()
