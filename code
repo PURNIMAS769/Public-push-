@@ -1,5 +1,6 @@
 fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter server.address == "p-stv-ig-prd-svc.hcscint.net" or server.address == "p-sso-sg-prd-svc.hcscint.net"
-| fields span.name, http.response.status_code, status.code, error, span.status
-| limit 10
+| fieldsAdd is_error = if(http.response.status_code >= 400, 1, else: 0)
+| summarize total = count(), errors = sum(is_error), by:{server.address}
+| fieldsAdd error_rate_pct = round((errors / total) * 100, decimals:2)
