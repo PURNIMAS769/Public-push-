@@ -1,20 +1,45 @@
-fetch spans, from:-24h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter span.name == "CONNECT DP0C" or span.name == "SELECT DP0C" or span.name == "PREPARE DP0C"
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd is_connect = if(span.name == "CONNECT DP0C", 1, else: 0)
-| fieldsAdd is_select = if(span.name == "SELECT DP0C", 1, else: 0)
-| fieldsAdd is_prepare = if(span.name == "PREPARE DP0C", 1, else: 0)
-| summarize
-    CONNECT = sum(is_connect),
-    SELECT = sum(is_select),
-    PREPARE = sum(is_prepare),
-    by:{service_name}
-| fieldsAdd Total = CONNECT + SELECT + PREPARE
-| sort Total desc
+Section 6: Security & Token Validation
 
-fetch spans, from:-24h
+Token Validation Gateway Request Volume Trend
+
+fetch spans, from:-2h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter span.name == "CONNECT DP0C" or span.name == "SELECT DP0C" or span.name == "PREPARE DP0C"
-| summarize op_count = count(), by:{bin(timestamp, 1h), span.name}
+| filter server.address == "p-stv-ig-prd-svc.hcscint.net"
+| summarize op_count = count(), by:{bin(timestamp, 15m)}
 | sort timestamp asc
+
+Token Validation Gateway Response Time Trend
+
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "p-stv-ig-prd-svc.hcscint.net"
+| summarize avg_duration = avg(duration), by:{bin(timestamp, 15m)}
+| sort timestamp asc
+
+
+SSO/OAuth Gateway Request Volume Trend (by endpoint)
+
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "p-sso-sg-prd-svc.hcscint.net"
+| summarize op_count = count(), by:{span.name}
+| sort op_count desc
+
+SSO/OAuth Response Time by Endpoint (Table)
+
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "p-sso-sg-prd-svc.hcscint.net"
+| summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{span.name}
+| sort avg_duration_ms desc
+
+
+Auth Failure/Error Rate (if status codes available)
+fetch spans, from:-2h, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter server.address == "p-stv-ig-prd-svc.hcscint.net" or server.address == "p-sso-sg-prd-svc.hcscint.net"
+| summarize total = count(), errors = countIf(isNotNull(error) or contains(toString(status), "error")), by:{server.address}
+| fieldsAdd error_rate_pct = round((errors / total) * 100, decimals:2)
+
+
+
