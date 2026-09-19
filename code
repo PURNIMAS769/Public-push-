@@ -1,28 +1,16 @@
-fetch dt.davis.problems //, from:-10d
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+fetch metric.series
+| filter contains(metric.key, "jvm") or contains(metric.key, "dt.process")
+| summarize count(), by:{metric.key}
+
+
+timeseries avg(dt.process.cpu.usage), avg(dt.process.memory.usage), by:{dt.entity.process_group_instance}, from:-24h
+| filter in(dt.entity.process_group_instance, classicEntitySelector("type(process_group_instance),tag(\"APMID:APP00006805\")"))
+
+
+
+fetch dt.davis.events, from:-10d
+| filter event.type == "CUSTOM_INFO"
+| filter contains(event.name, "restart") or contains(event.name, "Restart") or contains(event.name, "crash") or contains(event.name, "Crash")
 | filter in("APMID:APP00006805", entity_tags)
-| summarize
-    problem_title = takeFirst(event.name),
-    severity = takeFirst(event.category),
-    status = takeFirst(event.status),
-    root_cause = takeFirst(root_cause_entity_name),
-    affected_types = takeFirst(affected_entity_types),
-    start_time = takeFirst(event.start),
-    problem_event_id = takeFirst(event.id),
-    by:{display_id}
-| fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
-| fieldsAdd hrs = floor(total_seconds / 3600), mins = floor((total_seconds % 3600) / 60)
-| fieldsAdd age_formatted = concat(toString(hrs), "h ", toString(mins), "m")
-| fieldsAdd `Entity Type` =
-    if(contains(toString(affected_types), "dt.entity.process_group_instance"), "Process/Instance",
-    else: if(contains(toString(affected_types), "dt.entity.cloud_application_instance"), "Pod",
-    else: if(contains(toString(affected_types), "dt.entity.cloud_application"), "Kubernetes Deployment",
-    else: if(contains(toString(affected_types), "dt.entity.cloud_application_namespace"), "Namespace",
-    else: if(contains(toString(affected_types), "dt.entity.service"), "Service",
-    else: if(contains(toString(affected_types), "dt.entity.custom_device"), "Custom Device (DB2/Mainframe)",
-    else: "Other"))))))
-| fieldsAdd problem_link = concat(
-    "https://fjh52344.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
-    problem_event_id, "?from=now()-24h&to=now()")
-| sort start_time desc
-| fields display_id, problem_title, severity, status, `Entity Type`, root_cause, affected_types, start_time, age_formatted, problem_link
+| fields event.name, event.start
+| limit 20
