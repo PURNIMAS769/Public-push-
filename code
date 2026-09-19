@@ -1,14 +1,17 @@
 fetch spans, from:-24h, scanLimitGBytes: 100
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter span.name == "CONNECT DP0C" or span.name == "SELECT DP0C" or span.name == "PREPARE DP0C"
-| summarize op_count = count(), by:{dt.entity.service, span.name}
 | fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd op_type = if(span.name == "CONNECT DP0C", "CONNECT", else: if(span.name == "SELECT DP0C", "SELECT", else: "PREPARE"))
-| fields service_name, op_type, op_count
-| summarize CONNECT = takeFirstIf(op_count, op_type == "CONNECT"), SELECT = takeFirstIf(op_count, op_type == "SELECT"), PREPARE = takeFirstIf(op_count, op_type == "PREPARE"), by:{service_name}
-| fieldsAdd Total = (if(isNull(CONNECT),0,else:CONNECT)) + (if(isNull(SELECT),0,else:SELECT)) + (if(isNull(PREPARE),0,else:PREPARE))
+| fieldsAdd is_connect = if(span.name == "CONNECT DP0C", 1, else: 0)
+| fieldsAdd is_select = if(span.name == "SELECT DP0C", 1, else: 0)
+| fieldsAdd is_prepare = if(span.name == "PREPARE DP0C", 1, else: 0)
+| summarize
+    CONNECT = sum(is_connect),
+    SELECT = sum(is_select),
+    PREPARE = sum(is_prepare),
+    by:{service_name}
+| fieldsAdd Total = CONNECT + SELECT + PREPARE
 | sort Total desc
-
 
 fetch spans, from:-24h
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
