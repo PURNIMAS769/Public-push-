@@ -1,14 +1,5 @@
-Discovery — check role + connection state per instance (readable state check)
+Diagnostic — see the raw instance_name text before parsing
 timeseries role = avg(`sql-server.always-on.ar.role`),
-           connected = avg(`sql-server.always-on.ar.connectedState`),
-           sync_health = avg(`sql-server.always-on.db.synchronizationHealth`),
   by:{`dt.entity.sql:sql_server_instance`}
 | fieldsAdd instance_name = entityName(`dt.entity.sql:sql_server_instance`)
-| parse instance_name, "LD 'via: ' LD:host_fqdn ':'"
-| fieldsAdd role_val = round(arrayLast(role), decimals:0)
-| fieldsAdd connected_val = round(arrayLast(connected), decimals:0)
-| fieldsAdd sync_health_val = round(arrayLast(sync_health), decimals:0)
-| fields host_fqdn, role_val, connected_val, sync_health_val
-
-
-What to check
+| fields instance_name, role
