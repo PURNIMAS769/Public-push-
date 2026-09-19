@@ -1,48 +1,59 @@
-Section 7: Upstream/Downstream Dependencies
+Deployment Status (Desired vs Running Pods)
 
-Tile 1 — BDM Request Volume Trend
-
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
-| summarize op_count = count(), by:{bin(start_time, 15m)}
-| sort start_time asc
-
-BDM Response Time Trend
-
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
-| summarize avg_duration_ms = avg(duration)/1000, by:{bin(start_time, 15m)}
-| sort start_time asc
+timeseries desired = avg(dt.kubernetes.workload.pods_desired), running = avg(dt.kubernetes.pods), by:{k8s.workload.name}, from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
 
 
-BDM Request Volume & Response Time by Endpoint (Table)
+Container CPU Utilization + Throttling
 
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local"
-| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
-| summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{endpoint}
-| sort op_count desc
+timeseries cpu_usage = avg(dt.kubernetes.container.cpu_usage), cpu_throttled = avg(dt.kubernetes.container.cpu_throttled), from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
 
-Claims Member Service Call Volume (low-volume, secondary tile)
+Container Memory Utilization
 
-fetch spans, from:-24h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "p-app00006809-claimsmembersvc-ga-prd.hcscint.net"
-| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
-| summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{endpoint}
-| sort op_count desc
+timeseries memory_usage = avg(dt.kubernetes.container.memory_working_set), from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
 
+Container Restart Tracker (relocated from Section 3)
 
-Tile 5 — BDM/Claims Member Failure Rate
-fetch spans, from:-2h, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter server.address == "bdm-new-contract-lookup-api-service-prod.app00006808-benefit-data-management.svc.cluster.local" or server.address == "p-app00006809-claimsmembersvc-ga-prd.hcscint.net"
-| fieldsAdd is_error = if(http.response.status_code >= 400, 1, else: 0)
-| summarize total = count(), errors = sum(is_error), by:{server.address}
-| fieldsAdd error_rate_pct = round((errors / total) * 100, decimals:2)
+timeseries restarts_7d_arr = sum(dt.kubernetes.container.restarts), by:{k8s.pod.name, k8s.namespace.name, k8s.node.name}, from:-7d
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
+| fieldsAdd restarts_7d = arraySum(restarts_7d_arr)
+| join [
+    timeseries restarts_24h_arr = sum(dt.kubernetes.container.restarts), by:{k8s.pod.name}, from:-24h
+    | fieldsAdd restarts_24h = arraySum(restarts_24h_arr)
+], kind:leftOuter, on:{left[k8s.pod.name] == right[k8s.pod.name]}, prefix:"w24."
+| fieldsAdd restarts_24h = if(isNull(w24.restarts_24h), 0, else: w24.restarts_24h)
+| fieldsAdd `Status` =
+    if(restarts_24h >= 3, "🔴 Error (3+ restarts in 24h)",
+    else: if(restarts_24h >= 1 or restarts_7d >= 1, "🟡 Restarted Recently",
+    else: "🟢 Stable"))
+| sort restarts_24h desc, restarts_7d desc
+| fields `Node` = k8s.node.name, `Pod` = k8s.pod.name, `Restarts (7d)` = restarts_7d, `Restarts (24h)` = restarts_24h, `Status`
+| limit 20
+
+Namespace CPU/Memory Requests vs Limits
+timeseries requests_cpu = avg(dt.kubernetes.container.requests_cpu), limits_cpu = avg(dt.kubernetes.container.limits_cpu), requests_memory = avg(dt.kubernetes.container.requests_memory), limits_memory = avg(dt.kubernetes.container.limits_memory), from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
+
+Pod Count (Total vs Running)
+
+timeseries total_pods = avg(dt.kubernetes.pods), from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
+
+Pod Network Throughput (Rx/Tx)
+timeseries rx = avg(dt.kubernetes.pod.network_received_data), tx = avg(dt.kubernetes.pod.network_transmitted_data), from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
+
+Pod Network Health (packet drops)
+
+timeseries rx_dropped = sum(dt.kubernetes.pod.network_received_packets_dropped), tx_dropped = sum(dt.kubernetes.pod.network_transmitted_packets_dropped), from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
+
+Namespace Resource Quota Utilization
+
+timeseries used_cpu = avg(dt.kubernetes.resourcequota.cpu.used), hard_cpu = avg(dt.kubernetes.resourcequota.cpu.hard), used_memory = avg(dt.kubernetes.resourcequota.memory.used), hard_memory = avg(dt.kubernetes.resourcequota.memory.hard), from:-24h
+| filter k8s.namespace.name == "app00006805-accums-adjudication"
 
 
 
