@@ -1,64 +1,49 @@
-S0.2b — proper exclusivity test
-
 fetch dt.entity.host
-| fields id, name = entity.name, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "portfolio")
-| expand tag = tags
-| filter contains(lower(tag), "portfolio")
-| fieldsAdd portfolio = splitString(tag, "Portfolio:")[1]
-| summarize claimVals = countDistinctExact(if(contains(lower(portfolio), "claim"), portfolio)),
-            otherVals = countDistinctExact(if(contains(lower(portfolio), "claim") == false, portfolio)),
-            by:{id, name}
-| filter claimVals > 0
-| fieldsAdd exclusive = otherVals == 0
-| summarize hosts = count(), by:{exclusive}
+| filter arrayIndexOf(tags, "APMID:APP00000442") > -1
+| fields id, entity.name, tags
 
 
-Expect Tier A to grow substantially from 69.
-
-S0.5 — resolve the Test/Dev vs Production conflict (run this first)
-
-fetch dt.entity.host
-| fields id, tagStr = toString(tags)
-| filter contains(lower(tagStr), "portfolio:claims")
-| fieldsAdd envTag = if(contains(tagStr, "CMDB_ENV:Production"), "ENV=Production",
-                     else: if(contains(tagStr, "CMDB_ENV:"), "ENV=Other", else: "ENV=missing"))
-| fieldsAdd nameHint = if(contains(lower(tagStr), "_test"), "name=Test",
-                       else: if(contains(lower(tagStr), "_dev"), "name=Dev",
-                       else: if(contains(lower(tagStr), "_prod"), "name=Prod", else: "name=unknown")))
-| summarize hosts = countDistinctExact(id), by:{envTag, nameHint}
-| sort hosts desc
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00000442") > -1
+| fields id, entity.name, tags
 
 
-A small cross-tab that settles it definitively.
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00006809") > -1
+| fieldsAdd host = runs_on[dt.entity.host]
+| fieldsAdd host_os = entityAttr(host, "osType")
+| fields id, entity.name, host, host_os
 
-S0.3b — three-tier classification
 
-fetch dt.entity.host
-| fields id, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "portfolio:claims")
-| expand tag = tags
-| filter contains(tag, "APMID:") or contains(tag, "APPID:")
-| fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                    else: splitString(tag, "APPID:")[1])
-| filter startsWith(apmid, "APP")
-| lookup [
-    fetch dt.entity.host
-    | fields id, tags, tagStr = toString(tags)
-    | filter contains(lower(tagStr), "portfolio")
-    | expand tag = tags
-    | filter contains(lower(tag), "portfolio")
-    | fieldsAdd portfolio = splitString(tag, "Portfolio:")[1]
-    | summarize claimVals = countDistinctExact(if(contains(lower(portfolio), "claim"), portfolio)),
-                otherVals = countDistinctExact(if(contains(lower(portfolio), "claim") == false, portfolio)),
-                by:{id}
-    | fieldsAdd exclusive = claimVals > 0 and otherVals == 0
-    | fields id, exclusive
-  ], sourceField: id, lookupField: id, prefix: "h."
-| summarize hosts = countDistinctExact(id),
-            exclusiveHosts = countDistinctExact(if(h.exclusive == true, id)),
-            by:{apmid}
-| fieldsAdd tier = if(hosts > 40, "C - Shared Platform",
-                   else: if(exclusiveHosts > 0, "A - Confirmed Claims",
-                   else: "B - Shared / Unverified"))
-| sort tier asc, hosts desc
+fetch dt.entity.custom_device
+| filter contains(entity.name, "CTG", caseSensitive:false) or contains(entity.name, "CICS", caseSensitive:false) or contains(entity.name, "z/OS", caseSensitive:false) or contains(entity.name, "mainframe", caseSensitive:false)
+| fields id, entity.name, tags, type
+
+
+
+fetch dt.entity.custom_device
+| filter in(entity.name, {"PAUDB01","PAUDB21","PBDDB01","PCODB01","PGCDB01","PVGDB01"})
+| fields id, entity.name, tags, type
+
+
+fetch dt.entity.process_group_instance
+| filter contains(entity.name, "DB2", caseSensitive:false) or in(entity.name, {"PAUDB01","PAUDB21","PBDDB01","PCODB01","PGCDB01","PVGDB01"})
+| fields id, entity.name, tags
+
+
+
+fetch dt.entity.ibmmq:queue_manager
+| filter contains(entity.name, "Blue", caseSensitive:false) or arrayIndexOf(tags, "APMID:APP00000442") > -1 or arrayIndexOf(tags, "APMID:APP00006809") > -1
+| fields id, entity.name, tags
+
+fetch dt.entity.process_group
+| filter contains(entity.name, "MuleSoft", caseSensitive:false) or contains(entity.name, "UrbanCode", caseSensitive:false) or contains(entity.name, "Virtual Directory", caseSensitive:false)
+| fields id, entity.name, tags
+
+fetch dt.entity.cloud_application
+| filter arrayIndexOf(tags, "APMID:APP00000442") > -1 or arrayIndexOf(tags, "APMID:APP00006809") > -1 or contains(entity.name, "Blue Chip", caseSensitive:false)
+| fields id, entity.name, tags, namespaceName
+
+
+
+
