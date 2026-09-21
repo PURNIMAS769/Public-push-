@@ -12,7 +12,7 @@ fetch dt.davis.problems, from:-30d
     else: if(contains(toString(affected_entity_types), "dt.entity.disk"), "Disk",
     else: if(contains(toString(affected_entity_types), "dt.entity.custom_device"), "Custom Device (DB2/Mainframe)",
     else: "Other"))))))))
-| fields display_id, event.start
+| fields display_id, event.start, `Entity Type`
 | append [
     timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name, k8s.namespace.name}, from:-24h
     | filter k8s.namespace.name == "app00006805-accums-adjudication"
@@ -28,8 +28,8 @@ fetch dt.davis.problems, from:-30d
         | expand affected_entity_ids
         | fields affected_entity_ids, display_id, event.start
     ], kind:inner, on:{left[dt.entity.host] == right[affected_entity_ids]}, prefix:"p."
-    | fields display_id = p.display_id, event.start = p.event.start
+    | fieldsAdd `Entity Type` = "Host/Node"
+    | fields display_id = p.display_id, event.start = p.event.start, `Entity Type`
 ]
-| fieldsAdd `Entity Type` = if(isNull(`Entity Type`), "Host/Node", else: `Entity Type`)
 | summarize problem_count = countDistinct(display_id), by:{ day = bin(event.start, 1d), `Entity Type` }
 | sort day desc
