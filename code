@@ -1,6 +1,16 @@
-Fix — make APMID a required condition inside a Claims-scoped set:
+Two gaps still open
 
-fetch dt.entity.service
+1. The MSSQL check — you didn't share that output. Please run:
+
+fetch metric.series, from:-2h
+| summarize series = count(), by:{metric.key}
+| filter contains(lower(metric.key), "sql")
+| sort series desc
+
+
+2. Corrected A3f (hosts) — the earlier 188-row version had the INT parse bug that stripped zeros and created the junk APP bucket. Re-run the corrected version so host counts are comparable to the 112:
+
+fetch dt.entity.host
 | fields id, entity.name, tags, tagStr = toString(tags)
 | filter contains(lower(tagStr), "claim")
 | expand tags
@@ -9,5 +19,33 @@ fetch dt.entity.service
                     else: if(contains(tags, "APPID:"), splitString(tags, "APPID:")[1],
                     else: tags))
 | filter startsWith(apmid, "APP")
-| summarize services = countDistinctExact(id), by:{apmid}
-| sort services desc
+| summarize hosts = countDistinctExact(id), by:{apmid}
+| sort hosts desc
+
+The coverage matrix — one query, built in DQL
+
+Once those two run, this assembles everything into the single table that drives the dashboard design:
+
+fetch dt.entity.host
+| fields id, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "claim")
+| expand tags
+| filter contains(tags, "APP000") or contains(tags, "APP002")
+| fieldsAdd apmid = if(contains(tags, "APMID:"), splitString(tags, "APMID:")[1], else: tags)
+| filter startsWith(apmid, "APP")
+| summarize hosts = countDistinctExact(id), by:{apmid}
+| lookup [
+    fetch dt.entity.service
+    | fields id, tags, tagStr = toString(tags)
+    | filter contains(lower(tagStr), "claim")
+    | expand tags
+    | filter contains(tags, "APP000") or contains(tags, "APP002")
+    | fieldsAdd apmid = if(contains(tags, "APMID:"), splitString(tags, "APMID:")[1], else: tags)
+    | filter startsWith(apmid, "APP")
+    | summarize services = countDistinctExact(id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, fields: {services}
+| fieldsAdd services = coalesce(services, 0)
+| fieldsAdd coverage = if(hosts > 0 and services > 0, "Full",
+                       else: if(hosts > 0, "Host only",
+                       else: "Service only"))
+| sort hosts desc
