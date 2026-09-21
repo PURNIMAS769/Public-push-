@@ -1,24 +1,25 @@
+fetch dt.entity.service
+| filter entity.name == "DP0C" or entity.name == "DC0C" or entity.name == "DT0C"
+| filter contains(toString(tags), "APMID:APP00006805")
+| fields entity.name, id, tags
 
-Final Failover Status Tile
-timeseries role = avg(`sql-server.always-on.ar.role`),
-           connected = avg(`sql-server.always-on.ar.connectedState`),
-           sync_health = avg(`sql-server.always-on.db.synchronizationHealth`),
-           failover_mode = avg(`sql-server.always-on.ar.failoverMode`),
-  by:{`availability.group.name`, `availability.replica.name`}
 
-| filter contains(lower(`availability.group.name`), "pwauswsq")
-   or contains(lower(`availability.group.name`), "pftwswifsq")
-   or contains(lower(`availability.group.name`), "pwauswifsq")
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter span.kind == "client"
+| summarize count(), by:{server.address}
+| sort count() desc
+| limit 30
 
-| fieldsAdd role_val = round(arrayLast(role), decimals:0)
-| fieldsAdd connected_val = round(arrayLast(connected), decimals:0)
-| fieldsAdd sync_health_val = round(arrayLast(sync_health), decimals:0)
-| fieldsAdd failover_val = round(arrayLast(failover_mode), decimals:0)
+fetch spans, from:-24h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter span.kind == "client"
+| filter contains(server.address, "claimsmember") or contains(server.address, "006809")
 
-| fieldsAdd role_label = if(role_val == 1, "PRIMARY", else: if(role_val == 2, "SECONDARY", else: "UNKNOWN"))
-| fieldsAdd connection_label = if(connected_val == 1, "Connected", else: "Disconnected")
-| fieldsAdd health_label = if(sync_health_val == 2, "✅ Healthy", else: if(sync_health_val == 1, "⚠️ Partially Healthy", else: "🔴 Not Healthy"))
-| fieldsAdd failover_label = if(failover_val == 0, "Automatic", else: "Manual")
 
-| fields `availability.group.name`, `availability.replica.name`, role_label, connection_label, health_label, failover_label
-| sort role_label asc
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter span.kind == "client"
+| summarize count(), by:{server.address}
+| sort count() desc
+| limit 30
