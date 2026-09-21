@@ -1,8 +1,8 @@
-A4 — Claims APM IDs on services
+Fix — make APMID a required condition inside a Claims-scoped set:
 
 fetch dt.entity.service
 | fields id, entity.name, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "claim") or contains(tagStr, "APP000") or contains(tagStr, "APP002")
+| filter contains(lower(tagStr), "claim")
 | expand tags
 | filter contains(tags, "APP000") or contains(tags, "APP002")
 | fieldsAdd apmid = if(contains(tags, "APMID:"), splitString(tags, "APMID:")[1],
@@ -11,27 +11,3 @@ fetch dt.entity.service
 | filter startsWith(apmid, "APP")
 | summarize services = countDistinctExact(id), by:{apmid}
 | sort services desc
-
-
-A5 — Claims APM IDs on process groups
-
-fetch dt.entity.process_group_instance
-| fields id, entity.name, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "claim") or contains(tagStr, "APP000") or contains(tagStr, "APP002")
-| expand tags
-| filter contains(tags, "APP000") or contains(tags, "APP002")
-| fieldsAdd apmid = if(contains(tags, "APMID:"), splitString(tags, "APMID:")[1],
-                    else: if(contains(tags, "APPID:"), splitString(tags, "APPID:")[1],
-                    else: tags))
-| filter startsWith(apmid, "APP")
-| summarize pgis = countDistinctExact(id), by:{apmid}
-| sort pgis desc
-
-
-A6 — actual DB2/MSSQL/Mongo/MQ metric presence (settles the tag-vs-reality gap)
-
-fetch metric.series, from:-2h
-| summarize series = count(), by:{metric.key}
-| filter contains(metric.key, "db2") or contains(metric.key, "mssql")
-   or contains(metric.key, "mongo") or contains(metric.key, "mq")
-| sort series desc
