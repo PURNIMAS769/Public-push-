@@ -1,10 +1,13 @@
-timeseries
-    total_requests = sum(dt.service.request.count),
-    failed_requests = sum(dt.service.request.failure_count),
-    by:{dt.entity.service},
-    filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DC0C\")")) or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DT0C\")")),
-    from:-24h
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
-| fieldsAdd failure_rate_pct = round((failed_sum / total_sum) * 100, decimals:2)
-| fields service_name, total_sum, failed_sum, failure_rate_pct
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter span.kind == "client"
+| filter contains(server.address, "stv-ig") or contains(server.address, "sso-sg")
+| summarize count(), by:{server.address}
+| sort count() desc
+
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
+| filter contains(server.address, "sso-sg")
+| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
+| summarize op_count = count(), by:{endpoint}
+| sort op_count desc
