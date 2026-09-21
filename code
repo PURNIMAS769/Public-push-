@@ -5,7 +5,6 @@ fetch spans, from:-2h, scanLimitGBytes: 200
 | sort start_time asc
 
 
-
 fetch spans, from:-2h, scanLimitGBytes: 200
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
 | filter contains(server.address, "stv-ig")
@@ -26,6 +25,7 @@ fetch spans, from:-2h, scanLimitGBytes: 200
 | fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
 | summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{endpoint}
 | sort avg_duration_ms desc
+
 
 fetch spans, from:-2h, scanLimitGBytes: 200
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
