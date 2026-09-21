@@ -1,51 +1,78 @@
-Two gaps still open
-
-1. The MSSQL check — you didn't share that output. Please run:
-
-fetch metric.series, from:-2h
-| summarize series = count(), by:{metric.key}
-| filter contains(lower(metric.key), "sql")
-| sort series desc
-
-
-2. Corrected A3f (hosts) — the earlier 188-row version had the INT parse bug that stripped zeros and created the junk APP bucket. Re-run the corrected version so host counts are comparable to the 112:
-
+S0.1 — Portfolio value inventory (validate the namespace list)
 fetch dt.entity.host
-| fields id, entity.name, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "claim")
-| expand tags
-| filter contains(tags, "APP000") or contains(tags, "APP002")
-| fieldsAdd apmid = if(contains(tags, "APMID:"), splitString(tags, "APMID:")[1],
-                    else: if(contains(tags, "APPID:"), splitString(tags, "APPID:")[1],
-                    else: tags))
-| filter startsWith(apmid, "APP")
-| summarize hosts = countDistinctExact(id), by:{apmid}
+| fields id, name = entity.name, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "portfolio")
+| expand tag = tags
+| filter contains(lower(tag), "portfolio")
+| fieldsAdd portfolio = splitString(tag, "Portfolio:")[1]
+| summarize hosts = countDistinctExact(id), by:{portfolio}
 | sort hosts desc
 
-The coverage matrix — one query, built in DQL
 
-Once those two run, this assembles everything into the single table that drives the dashboard design:
 
+S0.2 — Host classification: Claims-exclusive vs shared
+fetch dt.entity.host
+| fields id, name = entity.name, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "portfolio")
+| expand tag = tags
+| filter contains(lower(tag), "portfolio")
+| fieldsAdd portfolio = splitString(tag, "Portfolio:")[1]
+| summarize portfolios = collectDistinct(portfolio), by:{id, name}
+| fieldsAdd pStr = toString(portfolios)
+| fieldsAdd isClaims = contains(lower(pStr), "claim")
+| filter isClaims == true
+| fieldsAdd exclusive = not(contains(lower(pStr), "multiple")) and arraySize(portfolios) == 1
+| summarize hosts = count(), by:{exclusive}
+
+
+
+S0.3 — Tier A / Tier B application list (the scope deliverable)
 fetch dt.entity.host
 | fields id, tags, tagStr = toString(tags)
 | filter contains(lower(tagStr), "claim")
-| expand tags
-| filter contains(tags, "APP000") or contains(tags, "APP002")
-| fieldsAdd apmid = if(contains(tags, "APMID:"), splitString(tags, "APMID:")[1], else: tags)
+| expand tag = tags
+| filter contains(tag, "APMID:") or contains(tag, "APPID:")
+| fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
+                    else: splitString(tag, "APPID:")[1])
 | filter startsWith(apmid, "APP")
-| summarize hosts = countDistinctExact(id), by:{apmid}
 | lookup [
-    fetch dt.entity.service
+    fetch dt.entity.host
     | fields id, tags, tagStr = toString(tags)
-    | filter contains(lower(tagStr), "claim")
-    | expand tags
-    | filter contains(tags, "APP000") or contains(tags, "APP002")
-    | fieldsAdd apmid = if(contains(tags, "APMID:"), splitString(tags, "APMID:")[1], else: tags)
-    | filter startsWith(apmid, "APP")
-    | summarize services = countDistinctExact(id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, fields: {services}
-| fieldsAdd services = coalesce(services, 0)
-| fieldsAdd coverage = if(hosts > 0 and services > 0, "Full",
-                       else: if(hosts > 0, "Host only",
-                       else: "Service only"))
+    | filter contains(lower(tagStr), "portfolio")
+    | expand tag = tags
+    | filter contains(lower(tag), "portfolio")
+    | fieldsAdd portfolio = splitString(tag, "Portfolio:")[1]
+    | summarize portfolios = collectDistinct(portfolio), by:{id}
+    | fieldsAdd pStr = toString(portfolios)
+    | fieldsAdd exclusive = contains(lower(pStr), "claim")
+                            and not(contains(lower(pStr), "multiple"))
+                            and arraySize(portfolios) == 1
+    | fields id, exclusive
+  ], sourceField: id, lookupField: id, prefix: "h."
+| summarize hosts = countDistinctExact(id),
+            exclusiveHosts = countDistinctExact(if(h.exclusive == true, id)),
+            by:{apmid}
+| fieldsAdd tier = if(exclusiveHosts > 0, "A - Confirmed Claims", else: "B - Shared / Unverified")
+| sort tier asc, hosts desc
+
+
+This is the query everything else depends on. Tier A is your portfolio; Tier B is the co-resident noise that inflated the earlier result to 292. I'd expect Tier A to land meaningfully closer to 152 — that's the number to sanity-check against ServiceNow once, then never again.
+
+If countDistinctExact(if(...)) is rejected, use this instead and accept a small over-count on multi-tag hosts:
+
+| summarize hosts = countDistinctExact(id),
+            exclusiveRows = sum(if(h.exclusive == true, 1, else: 0)),
+            by:{apmid}
+| fieldsAdd tier = if(exclusiveRows > 0, "A - Confirmed Claims", else: "B - Shared / Unverified")
+
+S0.4 — Application name resolution
+fetch dt.entity.host
+| fields id, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "claim")
+| expand tag = tags
+| filter startsWith(tag, "APPName:") or startsWith(tag, "AppCMDB_AYS:")
+| fieldsAdd appName = if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1],
+                      else: splitString(tag, "AppCMDB_AYS:")[1])
+| fieldsAdd appName = replaceString(appName, "}", "")
+| summarize hosts = countDistinctExact(id), by:{appName}
 | sort hosts desc
