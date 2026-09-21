@@ -46,15 +46,15 @@ fetch dt.davis.problems
             start_time = takeFirst(event.start),
             problem_event_id = takeFirst(event.id),
             by:{affected_entity_ids}
-    ], kind:leftInner, on:{left[dt.entity.host] == right[affected_entity_ids]}
-    | fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
+    ], kind:inner, on:{left[dt.entity.host] == right[affected_entity_ids]}, prefix:"p."
+    | fieldsAdd total_seconds = round((now() - p.start_time) / 1s, decimals:0)
     | fieldsAdd hrs = floor(total_seconds / 3600), mins = floor((total_seconds % 3600) / 60)
     | fieldsAdd age_formatted = concat(toString(hrs), "h ", toString(mins), "m")
     | fieldsAdd `Entity Type` = "Host/Node"
     | fieldsAdd display_id = k8s.node.name
     | fieldsAdd problem_link = concat(
         "https://wdf17482.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
-        problem_event_id, "?from=now()-24h&to=now()")
-    | fields display_id, problem_title, severity, status, `Entity Type`, root_cause, start_time, age_formatted, problem_link
+        p.problem_event_id, "?from=now()-24h&to=now()")
+    | fields display_id, problem_title = p.problem_title, severity = p.severity, status = p.status, `Entity Type`, root_cause = p.root_cause, start_time = p.start_time, age_formatted, problem_link
 ]
 | sort start_time desc
