@@ -1,10 +1,48 @@
-A3 — Is there a Claims / Portfolio / Product Line tag
+namespaces.
+
+A3b — Every Claims-related tag, across all namespaces
 fetch dt.entity.host
 | fields id, entity.name, tags
 | expand tags
 | filter contains(lower(tags), "claim")
-   or contains(lower(tags), "portfolio")
-   or contains(lower(tags), "product")
+| summarize hosts = countDistinctExact(id), by:{tags}
+| sort hosts desc
+
+
+This strips out portfolio/product noise and shows only Claims. Watch for Portfolio:Claims, [Azure]Portfolio:Claims, [AWS]Portfolio:Claims alongside the CMDB one.
+
+A3c — True distinct Claims host count (dedupe across namespaces)
+fetch dt.entity.host
+| fields id, entity.name, tags
+| expand tags
+| filter contains(lower(tags), "claim")
+| summarize hosts = countDistinctExact(id)
+
+
+If this returns 82, the CMDB tag is complete. If it returns more, multiple namespaces are in play and every rollup must filter on all of them.
+
+A2b — Which APM ID tag key exists (this is the critical one)
+fetch dt.entity.host
+| fields id, entity.name, tags
+| expand tags
+| filter contains(lower(tags), "apm")
+   or contains(tags, "APP000")
+   or contains(lower(tags), "npid")
 | summarize hosts = countDistinctExact(id), by:{tags}
 | sort hosts desc
 | limit 200
+
+
+A1/A3 didn't surface an APM ID tag in the top 200, which is expected — APM IDs are high-cardinality so each value has few hosts and they sink below the cutoff. This filters directly for them.
+
+A3d — All tag keys present on Claims hosts specifically
+fetch dt.entity.host
+| fields id, entity.name, tags
+| filter iArrayContains(tags, "CMDB_Portfolio:Claims")
+| expand tags
+| summarize hosts = countDistinctExact(id), by:{tags}
+| sort hosts desc
+| limit 300
+
+
+This is the highes
