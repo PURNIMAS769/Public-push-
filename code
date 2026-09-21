@@ -1,24 +1,7 @@
-A3d — corrected (array handling)
-fetch dt.entity.host
-| fields id, entity.name, tags, tagStr = toString(tags)
-| filter contains(tagStr, "CMDB_Portfolio:Claims")
-| expand tags
-| summarize hosts = countDistinctExact(id), by:{tags}
-| sort hosts desc
-| limit 300
+Run these two next — they give the actual app list
 
+A3e — Claims APM IDs across all namespaces
 
-If toString(tags) also complains, use this instead:
-
-fetch dt.entity.host
-| fields id, entity.name, tags
-| filter arrayIndexOf(tags, "CMDB_Portfolio:Claims") >= 0
-| expand tags
-| summarize hosts = countDistinctExact(id), by:{tags}
-| sort hosts desc
-| limit 300
-
-A3e — all Claims hosts, all namespaces (the real scope)
 fetch dt.entity.host
 | fields id, entity.name, tags, tagStr = toString(tags)
 | filter contains(lower(tagStr), "claim")
@@ -26,25 +9,36 @@ fetch dt.entity.host
 | filter startsWith(tags, "APMID:")
    or startsWith(tags, "[Azure]APMID:")
    or startsWith(tags, "[Environment]APPID:")
+   or startsWith(tags, "APP000")
+   or startsWith(tags, "APP002")
 | summarize hosts = countDistinctExact(id), by:{tags}
 | sort hosts desc
-| limit 300
 
 
-This is the one that produces your Claims APM ID list — every APMID tag found on any host that carries any Claims-related tag.
+A3f — normalized, one row per APM ID
 
-A3f — normalized APMID (collapse the namespace variants)
 fetch dt.entity.host
 | fields id, entity.name, tags, tagStr = toString(tags)
 | filter contains(lower(tagStr), "claim")
 | expand tags
 | filter contains(tags, "APP000") or contains(tags, "APP002")
-| fieldsAdd apmid = if(contains(tags, "APMID:"),
-                       splitString(tags, "APMID:")[1],
-                       else: tags)
+| parse tags, "LD 'APP' INT:num"
+| fieldsAdd apmid = concat("APP", toString(num))
 | summarize hosts = countDistinctExact(id), by:{apmid}
 | sort hosts desc
-| limit 300
 
 
-Gives
+A3f is the deliverable — a deduped APM ID list with host counts, ready to join against your 152.
+
+A3g — criticality + env profile of the Claims estate (small output, high value)
+
+fetch dt.entity.host
+| fields id, entity.name, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "claim")
+| expand tags
+| filter startsWith(tags, "BusinessCriticality:")
+   or startsWith(tags, "CMDB_ENV:")
+   or startsWith(tags, "OS_C:")
+   or startsWith(tags, "DB_C:")
+| summarize hosts = countDistinctExact(id), by:{tags}
+| sort hosts desc
