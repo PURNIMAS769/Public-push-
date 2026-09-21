@@ -1,8 +1,3 @@
-fetch spans, from:-2h, scanLimitGBytes: 200
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00006805\")"))
-| filter span.kind == "client"
-| summarize count(), by:{server.address}
-| sort count() desc
-| limit 30
-
-
+timeseries total_requests = sum(dt.service.request.count),
+    filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DC0C\")")) or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DT0C\")")),
+    from:-24h
