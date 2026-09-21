@@ -1,17 +1,10 @@
-timeseries total_requests = sum(dt.service.request.count),
+timeseries
+    total_requests = sum(dt.service.request.count),
+    failed_requests = sum(dt.service.request.failure_count),
     by:{dt.entity.service},
     filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DC0C\")")) or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DT0C\")")),
     from:-24h
 | fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_sum = arraySum(total_requests)
-| fields service_name, total_sum
-
-timeseries
-    total_requests = sum(dt.service.request.count),
-    failed_requests = sum(dt.service.request.failure_count),
-    filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DC0C\")")) or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DT0C\")")),
-    from:-24h
 | fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
 | fieldsAdd failure_rate_pct = round((failed_sum / total_sum) * 100, decimals:2)
-
-
+| fields service_name, total_sum, failed_sum, failure_rate_pct
