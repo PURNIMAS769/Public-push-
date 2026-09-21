@@ -1,36 +1,10 @@
-fetch dt.davis.problems, from:-30d
-| filter not(dt.davis.is_duplicate)
-| filter in("APMID:APP00006805", entity_tags)
-| filter not(contains(toString(affected_entity_types), "dt.entity.host"))
-| fieldsAdd `Entity Type` =
-    if(contains(toString(affected_entity_types), "dt.entity.process_group_instance"), "Process/Instance",
-    else: if(contains(toString(affected_entity_types), "dt.entity.cloud_application_instance"), "Pod",
-    else: if(contains(toString(affected_entity_types), "dt.entity.cloud_application"), "Kubernetes Deployment",
-    else: if(contains(toString(affected_entity_types), "dt.entity.cloud_application_namespace"), "Namespace",
-    else: if(contains(toString(affected_entity_types), "dt.entity.container_group_instance"), "Container",
-    else: if(contains(toString(affected_entity_types), "dt.entity.service"), "Service",
-    else: if(contains(toString(affected_entity_types), "dt.entity.network_interface"), "Network",
-    else: if(contains(toString(affected_entity_types), "dt.entity.disk"), "Disk",
-    else: if(contains(toString(affected_entity_types), "dt.entity.custom_device"), "Custom Device (DB2/Mainframe)",
-    else: "Other"))))))))
-| fields display_id, event.start, `Entity Type`
-| append [
-    timeseries avg(dt.kubernetes.container.cpu_usage), by:{k8s.node.name, k8s.namespace.name}, from:-24h
-    | filter k8s.namespace.name == "app00006805-accums-adjudication"
-    | fields k8s.node.name
-    | dedup k8s.node.name
-    | lookup [
-        fetch dt.entity.host
-        | fields id, entity.name
-    ], sourceField: k8s.node.name, lookupField: entity.name, fields: { dt.entity.host = id }
-    | join [
-        fetch dt.davis.problems, from:-30d
-        | filter not(dt.davis.is_duplicate)
-        | expand affected_entity_ids
-        | fields affected_entity_ids, display_id, event.start
-    ], kind:inner, on:{left[dt.entity.host] == right[affected_entity_ids]}, prefix:"p."
-    | fieldsAdd `Entity Type` = "Host/Node"
-    | fields display_id = p.display_id, event.start = p.event.start, `Entity Type`
-]
-| summarize problem_count = countDistinct(display_id), by:{ day = bin(event.start, 1d), `Entity Type` }
-| sort day desc
+A3 — Is there a Claims / Portfolio / Product Line tag
+fetch dt.entity.host
+| fields id, entity.name, tags
+| expand tags
+| filter contains(lower(tags), "claim")
+   or contains(lower(tags), "portfolio")
+   or contains(lower(tags), "product")
+| summarize hosts = countDistinctExact(id), by:{tags}
+| sort hosts desc
+| limit 200
