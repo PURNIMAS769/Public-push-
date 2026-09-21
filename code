@@ -1,49 +1,21 @@
+fetch dt.entity.process_group_instance
+| filter contains(tags, "APP00000442", caseSensitive:false)
+| fields id, entity.name, tags
+
+
 fetch dt.entity.host
-| filter arrayIndexOf(tags, "APMID:APP00000442") > -1
+| filter contains(tags, "APP00000442", caseSensitive:false)
 | fields id, entity.name, tags
 
-
 fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00000442") > -1
+| filter contains(tags, "APP00000442", caseSensitive:false)
 | fields id, entity.name, tags
 
-
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00006809") > -1
-| fieldsAdd host = runs_on[dt.entity.host]
-| fieldsAdd host_os = entityAttr(host, "osType")
-| fields id, entity.name, host, host_os
-
-
 fetch dt.entity.custom_device
-| filter contains(entity.name, "CTG", caseSensitive:false) or contains(entity.name, "CICS", caseSensitive:false) or contains(entity.name, "z/OS", caseSensitive:false) or contains(entity.name, "mainframe", caseSensitive:false)
-| fields id, entity.name, tags, type
-
-
-
-fetch dt.entity.custom_device
-| filter in(entity.name, {"PAUDB01","PAUDB21","PBDDB01","PCODB01","PGCDB01","PVGDB01"})
+| filter contains(tags, "APP00000442", caseSensitive:false)
 | fields id, entity.name, tags, type
 
 
 fetch dt.entity.process_group_instance
-| filter contains(entity.name, "DB2", caseSensitive:false) or in(entity.name, {"PAUDB01","PAUDB21","PBDDB01","PCODB01","PGCDB01","PVGDB01"})
+| filter contains(tags, "PRD00000173", caseSensitive:false)
 | fields id, entity.name, tags
-
-
-
-fetch dt.entity.ibmmq:queue_manager
-| filter contains(entity.name, "Blue", caseSensitive:false) or arrayIndexOf(tags, "APMID:APP00000442") > -1 or arrayIndexOf(tags, "APMID:APP00006809") > -1
-| fields id, entity.name, tags
-
-fetch dt.entity.process_group
-| filter contains(entity.name, "MuleSoft", caseSensitive:false) or contains(entity.name, "UrbanCode", caseSensitive:false) or contains(entity.name, "Virtual Directory", caseSensitive:false)
-| fields id, entity.name, tags
-
-fetch dt.entity.cloud_application
-| filter arrayIndexOf(tags, "APMID:APP00000442") > -1 or arrayIndexOf(tags, "APMID:APP00006809") > -1 or contains(entity.name, "Blue Chip", caseSensitive:false)
-| fields id, entity.name, tags, namespaceName
-
-
-
-
