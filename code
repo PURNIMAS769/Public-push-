@@ -1,6 +1,7 @@
 fetch dt.davis.problems, from:-30d
 | filter not(dt.davis.is_duplicate)
 | filter in("APMID:APP00006805", entity_tags)
+| filter not(contains(toString(affected_entity_types), "dt.entity.host"))
 | fieldsAdd `Entity Type` =
     if(contains(toString(affected_entity_types), "dt.entity.process_group_instance"), "Process/Instance",
     else: if(contains(toString(affected_entity_types), "dt.entity.cloud_application_instance"), "Pod",
