@@ -7,9 +7,11 @@ timeseries
 | filter in(dt.entity.process_group_instance,
     classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
 | fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-| fieldsAdd used_mem = total_mem - free_mem
-| fieldsAdd heap_used_pct = (used_mem * 100) / max_mem
-| fields process_name, heap_used_pct, dt.entity.process_group_instance
+| fieldsAdd heap_max_mb = arrayAvg(max_mem) / 1048576
+| fieldsAdd heap_used_mb = (arrayAvg(total_mem) - arrayAvg(free_mem)) / 1048576
+| fieldsAdd heap_used_pct = round((heap_used_mb / heap_max_mb) * 100, decimals:1)
+| fields process_name, heap_used_mb, heap_max_mb, heap_used_pct, dt.entity.process_group_instance
+| sort heap_used_pct desc
 
 
 timeseries
