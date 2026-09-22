@@ -1,92 +1,30 @@
-timeseries cpu_usage = avg(dt.host.cpu.usage),
-by:{dt.entity.host},
-from:-24h
-| fieldsAdd host_name = entityName(dt.entity.host)
-| filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd `CPU Usage %` = round(arrayAvg(cpu_usage), decimals:2)
-| fieldsAdd `Status` =
-if(`CPU Usage %` >= 80, "🔴 High (80%+)",
-else: if(`CPU Usage %` >= 50, "🟠 Moderate (50-80%)", else: "🟢 Healthy (<50%)"))
-| fields `Host` = host_name, `CPU Usage %`, `Status`
-| sort `CPU Usage %` desc
+timeseries total_requests = sum(dt.service.request.count),
+by:{dt.entity.service},
+filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
+or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")")),
+from:-6M
+| fieldsAdd service_name = entityName(dt.entity.service)
+
+
+fetch spans, from:-15d, scanLimitGBytes: -1
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| filter contains(server.address, "stv-ig")
+| makeTimeseries op_count = count(), interval:15m
 
 
 timeseries
+cpu_usage = avg(dt.host.cpu.usage),
 mem_used = avg(dt.host.memory.used),
 mem_avail = avg(dt.host.memory.avail_bytes),
 by:{dt.entity.host},
-from:-24h
+from:-6M
 | fieldsAdd host_name = entityName(dt.entity.host)
 | filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd `Memory Usage %` = round((arrayAvg(mem_used) / (arrayAvg(mem_used) + arrayAvg(mem_avail))) * 100, decimals:1)
-| fieldsAdd `Status` =
-if(`Memory Usage %` >= 85, "🔴 Critical (85%+)",
-else: if(`Memory Usage %` >= 70, "🟠 High (70-85%)", else: "🟢 Healthy (<70%)"))
-| fields `Host` = host_name, `Memory Usage %`, `Status`
-| sort `Memory Usage %` desc
-
-timeseries
-read_time = avg(dt.host.disk.read_time),
-write_time = avg(dt.host.disk.write_time),
-queue_len = avg(dt.host.disk.queue_length),
-by:{dt.entity.host},
-from:-24h
-| fieldsAdd host_name = entityName(dt.entity.host)
-| filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd `Read Latency (ms)` = round(arrayAvg(read_time), decimals:2)
-| fieldsAdd `Write Latency (ms)` = round(arrayAvg(write_time), decimals:2)
-| fieldsAdd `Queue Length` = round(arrayAvg(queue_len), decimals:2)
-| fieldsAdd `Status` =
-if(`Read Latency (ms)` >= 20 or `Write Latency (ms)` >= 20, "🔴 High Latency",
-else: if(`Read Latency (ms)` >= 10 or `Write Latency (ms)` >= 10, "🟠 Moderate", else: "🟢 Healthy"))
-| fields `Host` = host_name, `Read Latency (ms)`, `Write Latency (ms)`, `Queue Length`, `Status`
-| sort `Read Latency (ms)` desc
-
-
-timeseries
-bytes_rx = sum(dt.host.net.nic.bytes_rx),
-bytes_tx = sum(dt.host.net.nic.bytes_tx),
-errors_rx = sum(dt.host.net.nic.packets.errors_rx),
-errors_tx = sum(dt.host.net.nic.packets.errors_tx),
-by:{dt.entity.host},
-from:-24h
-| fieldsAdd host_name = entityName(dt.entity.host)
-| filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd `Ingress (MB)` = round(arraySum(bytes_rx) / 1048576, decimals:2)
-| fieldsAdd `Egress (MB)` = round(arraySum(bytes_tx) / 1048576, decimals:2)
-| fieldsAdd `Errors (RX+TX)` = round(arraySum(errors_rx) + arraySum(errors_tx), decimals:0)
-| fieldsAdd `Status` = if(`Errors (RX+TX)` > 0, "🔴 Errors Detected", else: "🟢 Clean")
-| fields `Host` = host_name, `Ingress (MB)`, `Egress (MB)`, `Errors (RX+TX)`, `Status`
-| sort `Ingress (MB)` desc
-
-timeseries disk_used_pct = avg(dt.host.disk.used.percent),
-by:{dt.entity.host, dt.entity.disk},
-from:-24h
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd `Disk Used %` = round(arrayAvg(disk_used_pct), decimals:2)
-| fieldsAdd `Status` =
-if(`Disk Used %` >= 85, "🔴 Critical (85%+)",
-else: if(`Disk Used %` >= 70, "🟠 High (70-85%)", else: "🟢 Healthy (<70%)"))
-| fields `Host` = host_name, `Disk` = disk_name, `Disk Used %`, `Status`
-| sort `Disk Used %` desc
-
-
-timeseries
-bytes_read = avg(dt.host.disk.bytes_read),
-bytes_written = avg(dt.host.disk.bytes_written),
-by:{dt.entity.host, dt.entity.disk},
-from:-24h
-| fieldsAdd host_name = entityName(dt.entity.host)
-| fieldsAdd disk_name = entityName(dt.entity.disk)
-| filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd `Bytes Read (MB)` = round(arrayAvg(bytes_read) / 1048576, decimals:2)
-| fieldsAdd `Bytes Written (MB)` = round(arrayAvg(bytes_written) / 1048576, decimals:2)
-| fields `Host` = host_name, `Disk` = disk_name, `Bytes Read (MB)`, `Bytes Written (MB)`
-| sort `Bytes Read (MB)` desc
 
 
 
-
-
+timeseries total_requests = sum(dt.service.request.count),
+by:{dt.entity.service},
+from:-6M
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| fieldsAdd service_name = entityName(dt.entity.service)
