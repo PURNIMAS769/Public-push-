@@ -1,28 +1,15 @@
+Heap Memory Pool Used (MB)
+
 timeseries
-    total_mem = avg(dt.runtime.jvm.memory.total),
-    free_mem = avg(dt.runtime.jvm.memory.free),
-    max_mem = avg(dt.runtime.jvm.memory.max),
+    pool_used = avg(dt.runtime.jvm.memory.pool_used),
+    pool_max = avg(dt.runtime.jvm.memory.pool_max),
     by:{dt.entity.process_group_instance},
     from:-24h
 | filter in(dt.entity.process_group_instance,
     classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
 | fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-| fieldsAdd heap_max_mb = arrayAvg(max_mem) / 1048576
-| fieldsAdd heap_used_mb = (arrayAvg(total_mem) - arrayAvg(free_mem)) / 1048576
-| fieldsAdd heap_used_pct = round((heap_used_mb / heap_max_mb) * 100, decimals:1)
-| fields process_name, heap_used_mb, heap_max_mb, heap_used_pct, dt.entity.process_group_instance
-| sort heap_used_pct desc
-
-
-timeseries
-    pool_used = avg(dt.runtime.jvm.memory.pool.used),
-    pool_max = avg(dt.runtime.jvm.memory.pool.max),
-    by:{dt.entity.process_group_instance},
-    from:-24h
-| filter in(dt.entity.process_group_instance,
-    classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-| fieldsAdd current_used_mb = round(arrayLast(pool_used) / 1024 / 1024, decimals:2)
-| fieldsAdd current_max_mb = round(arrayLast(pool_max) / 1024 / 1024, decimals:2)
+| fieldsAdd current_used_mb = round(arrayAvg(pool_used) / 1048576, decimals:2)
+| fieldsAdd current_max_mb = round(arrayAvg(pool_max) / 1048576, decimals:2)
 | fields process_name, current_used_mb, current_max_mb, dt.entity.process_group_instance
 | sort current_used_mb desc
+
