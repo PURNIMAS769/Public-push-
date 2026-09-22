@@ -1,26 +1,22 @@
-timeseries
-    total_requests = sum(dt.service.request.count),
-    failed_requests = sum(dt.service.request.failure_count),
-    by:{dt.entity.service},
-    from:-24h
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd service_category = if(in(service_name, {"DP0C", "ODSPRDDA"}), "Shared Dependency", else: "App-Owned")
-| fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
-| filter total_sum > 0
-| fieldsAdd availability_pct = round((1 - (failed_sum / total_sum)) * 100, decimals:2)
-| join [
-    fetch dt.davis.problems, from:-24h
-    | filter event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize open_problem_count = countDistinct(event.id), by:{affected_entity_ids}
-], kind:leftOuter, on:{left[dt.entity.service] == right[affected_entity_ids]}, prefix:"p."
-| fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
-| fieldsAdd health_status = if(open_problem_count > 0, "⚠️ ALERT ACTIVE",
-else: if(availability_pct < 99.9, "⚠️ DEGRADED", else: "✅ HEALTHY"))
-| summarize
-    Total_Services = count(),
-    Healthy_Count = countIf(health_status == "✅ HEALTHY"),
-    Degraded_Count = countIf(health_status == "⚠️ DEGRADED"),
-    Alert_Active_Count = countIf(health_status == "⚠️ ALERT ACTIVE")
-| fields Total_Services, Healthy_Count, Degraded_Count, Alert_Active_Count
+fetch dt.davis.events, from:-30d
+| expand affected_entity_ids
+| lookup [
+    fetch dt.entity.host
+    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
+    | fields id, entity.name
+  ], sourceField: affected_entity_ids, lookupField: id, fields: { host_name = entity.name }
+| lookup [
+    fetch dt.entity.process_group_instance
+    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
+    | fields id, entity.name
+  ], sourceField: affected_entity_ids, lookupField: id, fields: { pgi_name = entity.name }
+| lookup [
+    fetch dt.entity.service
+    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
+    | fields id, entity.name
+  ], sourceField: affected_entity_ids, lookupField: id, fields: { service_name = entity.name }
+| filter isNotNull(host_name) or isNotNull(pgi_name) or isNotNull(service_name)
+| fieldsAdd matched_entity = if(isNotNull(host_name), host_name, else: if(isNotNull(pgi_name), pgi_name, else: service_name))
+| fieldsAdd entity_layer = if(isNotNull(host_name), "Host", else: if(isNotNull(pgi_name), "Process", else: "Service"))
+| summarize count(), by:{event.type, event.name, entity_layer}
+| sort entity_layer asc
