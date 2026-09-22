@@ -1,11 +1,37 @@
-fetch dt.entity.service
-| filter contains(entity.name, "p-stv-ig", caseSensitive:false) or contains(entity.name, "p-sso-sg", caseSensitive:false)
-| fields id, entity.name, tags
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| filter contains(server.address, "stv-ig")
+| summarize op_count = count(), by:{interval = bin(start_time, 15m)}
+| sort interval asc
 
 
 fetch spans, from:-2h, scanLimitGBytes: 200
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| filter isNotNull(server.address)
-| summarize count(), by:{server.address}
-| sort `count()` desc
-| limit 30
+| filter contains(server.address, "stv-ig")
+| summarize avg_duration_ms = avg(duration)/1000, by:{interval = bin(start_time, 15m)}
+| sort interval asc
+
+
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| filter contains(server.address, "sso-sg")
+| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
+| summarize op_count = count(), by:{endpoint}
+| sort op_count desc
+
+
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| filter contains(server.address, "stv-ig") or contains(server.address, "sso-sg")
+| fieldsAdd is_error = if(http.response.status_code >= 400, 1, else: 0)
+| summarize total = count(), errors = sum(is_error), by:{server.address}
+| fieldsAdd error_rate_pct = round((errors / total) * 100, decimals:2)
+
+
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| filter contains(server.address, "sso-sg")
+| fieldsAdd endpoint = concat(toString(span.name), " ", toString(url.path))
+| summarize op_count = count(), avg_duration_ms = avg(duration)/1000, by:{endpoint}
+| sort avg_duration_ms desc
+
