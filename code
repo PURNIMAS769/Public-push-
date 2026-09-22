@@ -1,17 +1,3 @@
-timeseries avg(dt.profiling.jvm.threads.count), by:{dt.entity.process_group_instance}, from:-24h
-| filter in(dt.entity.process_group_instance,
-    classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-
-
-timeseries avg(dt.runtime.jvm.gc.suspension_time), by:{dt.entity.process_group_instance}, from:-24h
-| filter in(dt.entity.process_group_instance,
-    classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
-
-
-
-timeseries avg(dt.runtime.jvm.gc.collection_time), by:{dt.entity.process_group_instance}, from:-24h
-| filter in(dt.entity.process_group_instance,
-    classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+fetch dt.metrics.timeseries
+| filter contains(metric.key, "jvm.memory", caseSensitive:false) or contains(metric.key, "heap", caseSensitive:false)
+| fields metric.key, metric.displayName
