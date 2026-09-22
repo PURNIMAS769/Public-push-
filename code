@@ -1,23 +1,21 @@
-fetch dt.entity.process_group_instance, from:-24h
+fetch dt.entity.host
 | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-| fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else: false)
-| fieldsAdd dt.entity.process_group = instance_of[dt.entity.process_group]
+| fields id, host_name = entity.name
 | join [
-    fetch dt.davis.problems, from:-60d
-    | filter event.status != "ACTIVE"
+    fetch dt.davis.problems, from: -10d
+    | filter event.status == "ACTIVE"
     | expand affected_entity_ids
-    | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
-], kind:leftOuter, on:{left[id] == right[affected_entity_ids]}, prefix:"p."
-| fieldsAdd open_problem_count = if(isNull(p.problem_count), 0, else: p.problem_count)
-| summarize
-    any_running = countIf(is_running == true) > 0,
-    open_problem_count = sum(open_problem_count),
-    by:{dt.entity.process_group}
-| fieldsAdd state = if(any_running == false, "DOWN (No Running Instance)",
-    else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else: "HEALTHY"))
-| summarize
-    Total_Process_Groups = count(),
-    Healthy_Count = countIf(state == "HEALTHY"),
-    Unhealthy_Count = countIf(state == "UNHEALTHY (Active Alert)"),
-    Down_Count = countIf(state == "DOWN (No Running Instance)")
-| fields Total_Process_Groups, Healthy_Count, Unhealthy_Count, Down_Count
+    | summarize
+        problem_count = countDistinct(event.id),
+        categories = collectDistinct(event.category),
+      by: { affected_entity_ids }
+  ],
+  kind: leftOuter,
+  on: { left[id] == right[affected_entity_ids] },
+  fields: { problem_count, categories }
+| fieldsAdd open_problem_count = if(isNull(problem_count), 0, else: problem_count)
+| fieldsAdd host_state = if(arrayIndexOf(categories, "AVAILABILITY") > -1, "UNAVAILABLE",
+    else: if(open_problem_count > 0, "UNHEALTHY",
+    else: "HEALTHY"))
+| fields host_name, host_state, open_problem_count
+| sort host_state desc, host_name asc
