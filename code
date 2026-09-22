@@ -1,3 +1,11 @@
 fetch dt.entity.service
 | filter contains(entity.name, "p-stv-ig", caseSensitive:false) or contains(entity.name, "p-sso-sg", caseSensitive:false)
 | fields id, entity.name, tags
+
+
+fetch spans, from:-2h, scanLimitGBytes: 200
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| filter isNotNull(server.address)
+| summarize count(), by:{server.address}
+| sort `count()` desc
+| limit 30
