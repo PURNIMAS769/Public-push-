@@ -24,4 +24,5 @@ fetch dt.entity.process_group_instance
 | fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
 | fieldsAdd total_period_ms = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1ms
 | fieldsAdd availability_pct = round((1 - (total_downtime_ms / total_period_ms)) * 100, decimals:2)
-| fields availability_pct
+| fieldsAdd Status = if(availability_pct >= 99.9, "✅ YES - On Target", else: "❌ NO - Below Target")
+| fields Status
