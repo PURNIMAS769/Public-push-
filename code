@@ -1,26 +1,4 @@
 fetch dt.davis.problems, from: -30d
 | filter arrayIndexOf(affected_entity_ids, "HOST-5641C8EF5B270688") > -1
-   or arrayIndexOf(affected_entity_ids, "HOST-85F0E541D762917F") > -1
-   or arrayIndexOf(affected_entity_ids, "HOST-406E9CF9CB02BE9F") > -1
    or arrayIndexOf(affected_entity_ids, "HOST-54F588E666E0D14E") > -1
-   or arrayIndexOf(affected_entity_ids, "HOST-AD8531D71431E3CE") > -1
-   or arrayIndexOf(affected_entity_ids, "HOST-7C31E4DCD82156F9") > -1
-   or arrayIndexOf(affected_entity_ids, "HOST-8081EF4462D5737C") > -1
-   or arrayIndexOf(affected_entity_ids, "HOST-CD17ACCC34A3E481") > -1
-| fields display_id, event.name, status, severity, affected_entity_ids, timeframe
-
-fetch dt.davis.problems, from: -30d
-| filter isNotNull(affected_entity_ids)
-| fieldsAdd host_names = arrayFilter(affected_entity_ids, {startsWith(_, "HOST-")})
-| filter arraySize(host_names) > 0
-| fields display_id, event.name, status, severity, affected_entity_ids
-| limit 500
-
-fetch dt.entity.service
-| filter contains(entity.name, "bc_adjui", caseSensitive:false) 
-   or contains(entity.name, "bc_nonadj", caseSensitive:false) 
-   or contains(entity.name, "bc_sharedacms", caseSensitive:false) 
-   or contains(entity.name, "bdcore", caseSensitive:false)
-   or contains(entity.name, "sharedaccumsui", caseSensitive:false)
-   or contains(entity.name, "MQSession", caseSensitive:false)
-| fields id, entity.name, tags
+| fields display_id, event.name, event.status, event.level, event.category, affected_entity_ids, event.start, event.end
