@@ -1,72 +1,17 @@
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-| fieldsAdd host_id = belongs_to[dt.entity.host]
-| lookup [
-    fetch dt.entity.host
-    | fields id, entity.name
-  ], sourceField: host_id, lookupField: id, fields: { host_name = entity.name }
-| fields id, process_name = entity.name, host_name
-| fieldsAdd id_str = toString(id)
-| join [
-    fetch dt.davis.events, from:-12d
-    | expand affected_entity_ids
-    | filter contains(event.name, "restarted")
-    | fieldsAdd entity_id_str = toString(affected_entity_ids)
-    | summarize restarts_7d = count(), last_restart = takeMax(timestamp), by:{entity_id_str}
-  ], kind:leftOuter, on:{left[id_str] == right[entity_id_str]}, prefix:"w7."
-| join [
-    fetch dt.davis.events, from:-24h
-    | expand affected_entity_ids
-    | filter contains(event.name, "restarted")
-    | fieldsAdd entity_id_str = toString(affected_entity_ids)
-    | summarize restarts_24h = count(), by:{entity_id_str}
-  ], kind:leftOuter, on:{left[id_str] == right[entity_id_str]}, prefix:"w24."
-| fieldsAdd restarts_7d = if(isNull(w7.restarts_7d), 0, else: w7.restarts_7d)
-| fieldsAdd restarts_24h = if(isNull(w24.restarts_24h), 0, else: w24.restarts_24h)
-| fieldsAdd total_seconds = if(isNotNull(w7.last_restart), round((now() - w7.last_restart) / 1s), else: null)
-| fieldsAdd days_p = if(isNotNull(total_seconds), toLong(total_seconds / 86400), else: null)
-| fieldsAdd hours_p = if(isNotNull(total_seconds), toLong((total_seconds % 86400) / 3600), else: null)
-| fieldsAdd mins_p = if(isNotNull(total_seconds), toLong((total_seconds % 3600) / 60), else: null)
-| fieldsAdd `Time Since Last Restart` =
-    if(isNull(total_seconds), "No Restart in 7d",
-    else: if(days_p > 0, concat(toString(days_p), "d ", toString(hours_p), "h ", toString(mins_p), "m"),
-    else: if(hours_p > 0, concat(toString(hours_p), "h ", toString(mins_p), "m"),
-    else: concat(toString(mins_p), "m"))))
-| fieldsAdd `Status` =
-    if(restarts_24h >= 3, "🔴 Error (3+ restarts in 24h)",
-    else: if(restarts_24h >= 1 or restarts_7d >= 1, "🟡 Restarted Recently",
-    else: "🟢 Stable"))
-| sort restarts_24h desc, restarts_7d desc
-| fields
-    `Host` = host_name,
-    `Process` = process_name,
-    `Restarts (10d)` = restarts_7d,
-    `Restarts (24h)` = restarts_24h,
-    `Last Restart` = w7.last_restart,
-    `Time Since Last Restart`,
-    `Status`
-| limit 20
-
-
-
-
-timeseries cpu = avg(dt.process.cpu.usage),
-by:{dt.entity.process_group_instance, dt.entity.host},
-from:-15m
-| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+timeseries avg(dt.profiling.jvm.threads.count), by:{dt.entity.process_group_instance}, from:-24h
 | filter in(dt.entity.process_group_instance,
     classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd current_cpu = round(arrayLast(cpu), decimals:2)
-| fields process_name, current_cpu, dt.entity.host
-| sort current_cpu desc
-
-
-timeseries memory = avg(dt.process.memory.usage),
-by:{dt.entity.process_group_instance, dt.entity.host},
-from:-15m
 | fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+
+
+timeseries avg(dt.runtime.jvm.gc.suspension_time), by:{dt.entity.process_group_instance}, from:-24h
 | filter in(dt.entity.process_group_instance,
     classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| fieldsAdd current_memory = round(arrayLast(memory), decimals:2)
-| fields process_name, current_memory, dt.entity.host
-| sort current_memory desc
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
+
+
+
+timeseries avg(dt.runtime.jvm.gc.collection_time), by:{dt.entity.process_group_instance}, from:-24h
+| filter in(dt.entity.process_group_instance,
+    classicEntitySelector("type(process_group_instance),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| fieldsAdd process_name = entityName(dt.entity.process_group_instance)
