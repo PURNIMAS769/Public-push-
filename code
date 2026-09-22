@@ -1,4 +1,20 @@
-fetch dt.davis.problems, from: -30d
-| filter arrayIndexOf(affected_entity_ids, "HOST-5641C8EF5B270688") > -1
-   or arrayIndexOf(affected_entity_ids, "HOST-54F588E666E0D14E") > -1
-| fields display_id, event.name, event.status, event.level, event.category, affected_entity_ids, event.start, event.end
+fetch dt.entity.kubernetes_node
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 
+   or arrayIndexOf(tags, "APP00005875") > -1
+| fields id, entity.name, tags
+
+fetch dt.entity.cloud_application
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 
+   or arrayIndexOf(tags, "APP00005875") > -1
+| fields id, entity.name, tags, namespaceName
+
+fetch dt.entity.kubernetes_cluster
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 
+   or arrayIndexOf(tags, "APP00005875") > -1
+| fields id, entity.name, tags
+
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
+| fieldsAdd is_k8s_node = isNotNull(kubernetes_node_name)
+| fields id, entity.name, is_k8s_node
+
