@@ -1,12 +1,20 @@
-fetch dt.entity.host
-| filter arrayIndexOf(tags, "APP00005875") > -1
-| fields id, entity.name, tags
-
-
 fetch dt.entity.service
-| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 or arrayIndexOf(tags, "APP00005875") > -1
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
 | fields id, entity.name, tags, managementZones
+| limit 200
+
+fetch dt.entity.custom_device
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 or arrayIndexOf(tags, "APP00005875") > -1
+| fields id, entity.name, tags, type
+
 
 fetch dt.entity.process_group_instance
+| filter contains(entity.name, "DB2", caseSensitive:false) or contains(entity.name, "ODS", caseSensitive:false)
 | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 or arrayIndexOf(tags, "APP00005875") > -1
 | fields id, entity.name, tags
+
+
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APP00005875") > -1
+| fieldsAdd open_problems = alerting_status
+| fields id, entity.name, open_problems
