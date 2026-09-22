@@ -18,5 +18,9 @@ timeseries
 | fieldsAdd open_problem_count = if(isNull(p.open_problem_count), 0, else: p.open_problem_count)
 | fieldsAdd health_status = if(open_problem_count > 0, "⚠️ ALERT ACTIVE",
 else: if(availability_pct < 99.9, "⚠️ DEGRADED", else: "✅ HEALTHY"))
-| fields service_name, service_category, dt.entity.service, total_sum, failed_sum, availability_pct, open_problem_count, health_status
-| sort availability_pct asc
+| summarize
+    Total_Services = count(),
+    Healthy_Count = countIf(health_status == "✅ HEALTHY"),
+    Degraded_Count = countIf(health_status == "⚠️ DEGRADED"),
+    Alert_Active_Count = countIf(health_status == "⚠️ ALERT ACTIVE")
+| fields Total_Services, Healthy_Count, Degraded_Count, Alert_Active_Count
