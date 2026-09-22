@@ -1,8 +1,14 @@
+fetch dt.entity.host
+| filter contains(tags, "APP00005875", caseSensitive:false)
+| fields id, entity.name, tags
+
+
+
 fetch dt.entity.service
-| filter in(id, {"SERVICE-604285B662A6C716","SERVICE-F7C93713A8E7FE99","SERVICE-59BEAFF5B96A3F9F","SERVICE-881F2D30D810A6D2","SERVICE-7CD806D9C0C12DF4","SERVICE-BB507DCBA9AB030A","SERVICE-5E7A98508D045780","SERVICE-F049E18B9F5052AF","SERVICE-A8E56BE4C59E5A52","SERVICE-C42840C16B3D478A","SERVICE-339B9A44EE7DB76B","SERVICE-86F0CD6065DA527C"})
+| filter contains(tags, "Blue_Chip_Benefit_Determination_Prod", caseSensitive:false)
 | fields id, entity.name, tags, managementZones
 
 
-fetch dt.entity.host
-| filter contains(entity.name, "pwauslwas7") or contains(entity.name, "pwauslwas8") or contains(entity.name, "pwaulballpdl") or contains(entity.name, "pwaulbitadmz") or contains(entity.name, "pwauslihsapp")
+fetch dt.entity.process_group_instance
+| filter contains(tags, "Blue_Chip_Benefit_Determination_Prod", caseSensitive:false)
 | fields id, entity.name, tags
