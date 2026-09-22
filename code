@@ -25,17 +25,12 @@ fetch dt.davis.events, from:-30d
 | fieldsAdd entity_layer = if(isNotNull(host_name), "Host", else: if(isNotNull(pgi_name), "Process", else: "Service"))
 | fieldsAdd entity_name = if(isNotNull(host_name), host_name, else: if(isNotNull(pgi_name), pgi_name, else: service_name))
 | fieldsAdd `Change Type` =
-    if(event.type == "DEPLOYMENT_CHANGED_CHANGE" or event.type == "DEPLOYMENT_CHANGED_NEW",
-        if(entity_layer == "Service", "Service Deployment Changed", else: "Deployment Changed"),
+    if(event.type == "DEPLOYMENT_CHANGED_CHANGE" or event.type == "DEPLOYMENT_CHANGED_NEW", "Deployment Changed",
     else: if(event.type == "PROCESS_RESTART", "Process Restart",
-    else: if(event.type == "AVAILABILITY_EVENT" and contains(event.name, "reboot", caseSensitive:false), "Host Rebooted",
-    else: if(event.type == "AVAILABILITY_EVENT" and contains(event.name, "shutdown", caseSensitive:false), "Host Shutdown",
-    else: if(event.type == "METRIC_CHANGEPOINT",
-        if(entity_layer == "Host", "Host Metric Changepoint",
-        else: if(entity_layer == "Process", "Process Metric Changepoint", else: "Service Metric Changepoint")),
-    else: if(event.type == "CUSTOM_ALERT",
-        if(entity_layer == "Host", "Host Custom Alert",
-        else: if(entity_layer == "Process", "Process Custom Alert", else: "Service Custom Alert")),
+    else: if(contains(event.name, "reboot", caseSensitive:false), "Host Rebooted",
+    else: if(contains(event.name, "shutdown", caseSensitive:false), "Host Shutdown",
+    else: if(event.type == "METRIC_CHANGEPOINT", "Metric Changepoint",
+    else: if(event.type == "CUSTOM_ALERT", "Custom Alert",
     else: "Other Change"))))))
 | summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type`, entity_layer, entity_name }
 | sort day desc, entity_layer asc
