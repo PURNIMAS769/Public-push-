@@ -1,32 +1,18 @@
-timeseries total_requests = sum(dt.service.request.count),
-    by:{dt.entity.service},
-    filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
-    or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-
-
-timeseries total_requests = sum(dt.service.request.response_time),
-    by:{dt.entity.service},
-    filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
-    or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")"))
-| fieldsAdd service_name = entityName(dt.entity.service)
-
-
-timeseries
-    total_requests = sum(dt.service.request.count),
-    failed_requests = sum(dt.service.request.failure_count),
-    by:{dt.entity.service},
-    filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
-    or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")")),
-    from:-24h
-| fieldsAdd service_name = entityName(dt.entity.service)
-| fieldsAdd total_sum = arraySum(total_requests), failed_sum = arraySum(failed_requests)
-| fieldsAdd failure_rate_pct = round((failed_sum / total_sum) * 100, decimals:2)
-| fields service_name, total_sum, failed_sum, failure_rate_pct
-
-
 fetch spans, from:-7d
+| filter in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
+    or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")"))
+| summarize count()
+
+
+fetch spans, scanLimitGBytes: 600, from:-7d
 | filter in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
     or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")"))
 | summarize count(), by:{span.name}
 | sort `count()` desc
+| limit 30
+
+fetch spans, scanLimitGBytes: 600, from:-7d
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| summarize count(), by:{span.name}
+| sort `count()` desc
+| limit 30
