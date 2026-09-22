@@ -1,17 +1,4 @@
-timeseries total_requests = sum(dt.service.request.count),
-by:{dt.entity.service},
-filter: in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
-or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")")),
-from:-6M
-| fieldsAdd service_name = entityName(dt.entity.service)
-
-
-fetch spans, from:-15d, scanLimitGBytes: -1
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| filter contains(server.address, "stv-ig")
-| makeTimeseries op_count = count(), interval:15m
-
-
+Tile 3 — Host CPU/Memory Utilization Forecast
 timeseries
 cpu_usage = avg(dt.host.cpu.usage),
 mem_used = avg(dt.host.memory.used),
@@ -22,9 +9,15 @@ from:-6M
 | filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
 
 
-
+Transaction/Service Request Volume Forecast
 timeseries total_requests = sum(dt.service.request.count),
 by:{dt.entity.service},
 from:-6M
 | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
 | fieldsAdd service_name = entityName(dt.entity.service)
+
+Tile 2 — Token Validation Gateway Volume Forecast
+fetch spans, from:-15d, scanLimitGBytes: -1
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+| filter contains(server.address, "stv-ig")
+| makeTimeseries op_count = count(), interval:15m
