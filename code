@@ -1,18 +1,3 @@
-fetch spans, from:-7d
-| filter in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
-    or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")"))
-| summarize count()
-
-
-fetch spans, scanLimitGBytes: 600, from:-7d
-| filter in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"DP0C\")"))
-    or in(dt.entity.service, classicEntitySelector("type(service),entityName.equals(\"ODSPRDDA\")"))
-| summarize count(), by:{span.name}
-| sort `count()` desc
-| limit 30
-
-fetch spans, scanLimitGBytes: 600, from:-7d
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-| summarize count(), by:{span.name}
-| sort `count()` desc
-| limit 30
+fetch dt.entity.service
+| filter contains(entity.name, "p-stv-ig", caseSensitive:false) or contains(entity.name, "p-sso-sg", caseSensitive:false)
+| fields id, entity.name, tags
