@@ -17,5 +17,9 @@ fetch dt.entity.host
 | fieldsAdd host_state = if(arrayIndexOf(categories, "AVAILABILITY") > -1, "UNAVAILABLE",
     else: if(open_problem_count > 0, "UNHEALTHY",
     else: "HEALTHY"))
-| fields host_name, host_state, open_problem_count
-| sort host_state desc, host_name asc
+| summarize
+    Total_Hosts = count(),
+    Healthy_Count = countIf(host_state == "HEALTHY"),
+    Unhealthy_Count = countIf(host_state == "UNHEALTHY"),
+    Unavailable_Count = countIf(host_state == "UNAVAILABLE")
+| fields Total_Hosts, Healthy_Count, Unhealthy_Count, Unavailable_Count
