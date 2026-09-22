@@ -1,4 +1,10 @@
 fetch dt.davis.events, from:-30d
+| filter event.type == "DEPLOYMENT_CHANGED_CHANGE"
+   or event.type == "DEPLOYMENT_CHANGED_NEW"
+   or event.type == "PROCESS_RESTART"
+   or event.type == "AVAILABILITY_EVENT"
+   or event.type == "CUSTOM_ALERT"
+   or event.type == "METRIC_CHANGEPOINT"
 | expand affected_entity_ids
 | lookup [
     fetch dt.entity.host
@@ -10,13 +16,14 @@ fetch dt.davis.events, from:-30d
     | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
     | fields id, entity.name
   ], sourceField: affected_entity_ids, lookupField: id, fields: { pgi_name = entity.name }
-| lookup [
-    fetch dt.entity.service
-    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-    | fields id, entity.name
-  ], sourceField: affected_entity_ids, lookupField: id, fields: { service_name = entity.name }
-| filter isNotNull(host_name) or isNotNull(pgi_name) or isNotNull(service_name)
-| fieldsAdd matched_entity = if(isNotNull(host_name), host_name, else: if(isNotNull(pgi_name), pgi_name, else: service_name))
-| fieldsAdd entity_layer = if(isNotNull(host_name), "Host", else: if(isNotNull(pgi_name), "Process", else: "Service"))
-| summarize count(), by:{event.type, event.name, entity_layer}
-| sort entity_layer asc
+| filter isNotNull(host_name) or isNotNull(pgi_name)
+| fieldsAdd entity_layer = if(isNotNull(host_name), "Host", else: "Process")
+| fieldsAdd `Change Type` =
+    if(event.type == "DEPLOYMENT_CHANGED_CHANGE" or event.type == "DEPLOYMENT_CHANGED_NEW", "Deployment Changed",
+    else: if(event.type == "PROCESS_RESTART", "Process Restart",
+    else: if(contains(event.name, "reboot", caseSensitive:false), "Host Rebooted",
+    else: if(contains(event.name, "shutdown", caseSensitive:false), "Host Shutdown",
+    else: if(event.type == "METRIC_CHANGEPOINT", "Metric Changepoint",
+    else: "Other Change")))))
+| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type`, entity_layer }
+| sort day desc
