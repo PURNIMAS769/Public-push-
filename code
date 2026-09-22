@@ -1,14 +1,12 @@
 fetch dt.entity.host
-| filter contains(tags, "APP00005875", caseSensitive:false)
+| filter arrayIndexOf(tags, "APP00005875") > -1
 | fields id, entity.name, tags
 
 
-
 fetch dt.entity.service
-| filter contains(tags, "Blue_Chip_Benefit_Determination_Prod", caseSensitive:false)
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 or arrayIndexOf(tags, "APP00005875") > -1
 | fields id, entity.name, tags, managementZones
 
-
 fetch dt.entity.process_group_instance
-| filter contains(tags, "Blue_Chip_Benefit_Determination_Prod", caseSensitive:false)
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 or arrayIndexOf(tags, "APP00005875") > -1
 | fields id, entity.name, tags
