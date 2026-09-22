@@ -1,36 +1,25 @@
-fetch dt.davis.events, from:-30d
-| filter event.type == "DEPLOYMENT_CHANGED_CHANGE"
-   or event.type == "DEPLOYMENT_CHANGED_NEW"
-   or event.type == "PROCESS_RESTART"
-   or event.type == "AVAILABILITY_EVENT"
-   or event.type == "CUSTOM_ALERT"
-   or event.type == "METRIC_CHANGEPOINT"
-| expand affected_entity_ids
-| lookup [
-    fetch dt.entity.host
-    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-    | fields id, entity.name
-  ], sourceField: affected_entity_ids, lookupField: id, fields: { host_name = entity.name }
-| lookup [
-    fetch dt.entity.process_group_instance
-    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-    | fields id, entity.name
-  ], sourceField: affected_entity_ids, lookupField: id, fields: { pgi_name = entity.name }
-| lookup [
-    fetch dt.entity.service
-    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-    | fields id, entity.name
-  ], sourceField: affected_entity_ids, lookupField: id, fields: { service_name = entity.name }
-| filter isNotNull(host_name) or isNotNull(pgi_name) or isNotNull(service_name)
-| fieldsAdd entity_layer = if(isNotNull(host_name), "Host", else: if(isNotNull(pgi_name), "Process", else: "Service"))
-| fieldsAdd entity_name = if(isNotNull(host_name), host_name, else: if(isNotNull(pgi_name), pgi_name, else: service_name))
-| fieldsAdd `Change Type` =
-    if(event.type == "DEPLOYMENT_CHANGED_CHANGE" or event.type == "DEPLOYMENT_CHANGED_NEW", "Deployment Changed",
-    else: if(event.type == "PROCESS_RESTART", "Process Restart",
-    else: if(contains(event.name, "reboot", caseSensitive:false), "Host Rebooted",
-    else: if(contains(event.name, "shutdown", caseSensitive:false), "Host Shutdown",
-    else: if(event.type == "METRIC_CHANGEPOINT", "Metric Changepoint",
-    else: if(event.type == "CUSTOM_ALERT", "Custom Alert",
-    else: "Other Change"))))))
-| summarize event_count = count(), by:{ day = bin(event.start, 1d), `Change Type`, entity_layer, entity_name }
-| sort day desc, entity_layer asc
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter in("APPName:Blue_Chip_Benefit_Determination_Prod", entity_tags)
+| summarize
+    problem_title = takeFirst(event.name),
+    severity = takeFirst(event.category),
+    status = takeFirst(event.status),
+    root_cause = takeFirst(root_cause_entity_name),
+    affected_types = takeFirst(affected_entity_types),
+    start_time = takeFirst(event.start),
+    problem_event_id = takeFirst(event.id),
+    by:{display_id}
+| fieldsAdd total_seconds = round((now() - start_time) / 1s, decimals:0)
+| fieldsAdd hrs = floor(total_seconds / 3600), mins = floor((total_seconds % 3600) / 60)
+| fieldsAdd age_formatted = concat(toString(hrs), "h ", toString(mins), "m")
+| fieldsAdd `Entity Type` =
+    if(contains(toString(affected_types), "dt.entity.host"), "Host",
+    else: if(contains(toString(affected_types), "dt.entity.process_group_instance"), "Process/Instance",
+    else: if(contains(toString(affected_types), "dt.entity.service"), "Service",
+    else: if(contains(toString(affected_types), "dt.entity.custom_device"), "Custom Device (DB2/Mainframe)",
+    else: "Other"))))
+| fieldsAdd problem_link = concat(
+    "https://wdf17482.apps.dynatrace.com/ui/apps/dynatrace.davis.problems/problem/",
+    problem_event_id, "?from=now()-24h&to=now()")
+| fields display_id, problem_title, severity, status, `Entity Type`, root_cause, start_time, age_formatted, problem_link
