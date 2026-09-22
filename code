@@ -1,7 +1,27 @@
-fetch dt.entity.host
-| filter contains(entity.name, "pwauslwas84", caseSensitive:false) or contains(entity.name, "pwaulballpdl", caseSensitive:false) or contains(entity.name, "pwaulbitadmz", caseSensitive:false)
-| fields id, entity.name, tags
-
-fetch dt.entity.service
-| filter contains(entity.name, "sharedaccumsui", caseSensitive:false) or contains(entity.name, "com.hcsc.ccsp.nonadj", caseSensitive:false) or contains(entity.name, "com.hcsc.ccsp.bd.ui", caseSensitive:false)
-| fields id, entity.name, tags
+fetch dt.entity.process_group_instance
+| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
+| fieldsAdd host = runs_on[dt.entity.host]
+| fieldsAdd all_ids = arrayConcat(array(id), host)
+| fieldsKeep all_ids
+| expand check_id = all_ids
+| append [
+    fetch dt.entity.service
+    | filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
+    | fields check_id = id
+]
+| join [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.category == "AVAILABILITY"
+    | expand affected_entity_ids
+    | fieldsAdd clamped_start = if(event.start < toTimestamp($dt_timeframe_from),
+        toTimestamp($dt_timeframe_from), else: event.start)
+    | fieldsAdd clamped_end = if(isNotNull(event.end), if(event.end > toTimestamp($dt_timeframe_to),
+        toTimestamp($dt_timeframe_to), else: event.end), else: toTimestamp($dt_timeframe_to))
+    | fieldsAdd downtime_ms = (clamped_end - clamped_start) / 1ms
+    | summarize downtime_ms = takeFirst(downtime_ms), by:{affected_entity_ids, display_id}
+], kind:leftOuter, on:{left[check_id] == right[affected_entity_ids]}, prefix:"p."
+| summarize total_downtime_ms = sum(p.downtime_ms)
+| fieldsAdd total_downtime_ms = if(isNull(total_downtime_ms), 0, else: total_downtime_ms)
+| fieldsAdd total_period_ms = (toTimestamp($dt_timeframe_to) - toTimestamp($dt_timeframe_from)) / 1ms
+| fieldsAdd availability_pct = round((1 - (total_downtime_ms / total_period_ms)) * 100, decimals:2)
+| fields availability_pct
