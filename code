@@ -4,7 +4,7 @@ fetch dt.entity.process_group_instance, from:-24h
 | fieldsAdd dt.entity.process_group = instance_of[dt.entity.process_group]
 | join [
     fetch dt.davis.problems, from:-60d
-    | filter event.status == "ACTIVE"
+    | filter event.status != "ACTIVE"
     | expand affected_entity_ids
     | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
 ], kind:leftOuter, on:{left[id] == right[affected_entity_ids]}, prefix:"p."
@@ -15,6 +15,9 @@ fetch dt.entity.process_group_instance, from:-24h
     by:{dt.entity.process_group}
 | fieldsAdd state = if(any_running == false, "DOWN (No Running Instance)",
     else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else: "HEALTHY"))
-| fieldsAdd pg_display_name = entityName(dt.entity.process_group)
-| fields pg_display_name, state, dt.entity.process_group
-| sort state desc
+| summarize
+    Total_Process_Groups = count(),
+    Healthy_Count = countIf(state == "HEALTHY"),
+    Unhealthy_Count = countIf(state == "UNHEALTHY (Active Alert)"),
+    Down_Count = countIf(state == "DOWN (No Running Instance)")
+| fields Total_Process_Groups, Healthy_Count, Unhealthy_Count, Down_Count
