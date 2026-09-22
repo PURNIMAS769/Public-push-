@@ -1,8 +1,26 @@
-fetch dt.davis.problems
-| filter arrayIndexOf(tags, "APP00005875") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
+fetch dt.davis.problems, from: -30d
+| filter arrayIndexOf(affected_entity_ids, "HOST-5641C8EF5B270688") > -1
+   or arrayIndexOf(affected_entity_ids, "HOST-85F0E541D762917F") > -1
+   or arrayIndexOf(affected_entity_ids, "HOST-406E9CF9CB02BE9F") > -1
+   or arrayIndexOf(affected_entity_ids, "HOST-54F588E666E0D14E") > -1
+   or arrayIndexOf(affected_entity_ids, "HOST-AD8531D71431E3CE") > -1
+   or arrayIndexOf(affected_entity_ids, "HOST-7C31E4DCD82156F9") > -1
+   or arrayIndexOf(affected_entity_ids, "HOST-8081EF4462D5737C") > -1
+   or arrayIndexOf(affected_entity_ids, "HOST-CD17ACCC34A3E481") > -1
 | fields display_id, event.name, status, severity, affected_entity_ids, timeframe
 
+fetch dt.davis.problems, from: -30d
+| filter isNotNull(affected_entity_ids)
+| fieldsAdd host_names = arrayFilter(affected_entity_ids, {startsWith(_, "HOST-")})
+| filter arraySize(host_names) > 0
+| fields display_id, event.name, status, severity, affected_entity_ids
+| limit 500
 
 fetch dt.entity.service
-| filter in(id, {"SERVICE-881F2D30D810A6D2","SERVICE-7CD806D9C0C12DF4","SERVICE-BB507DCBA9AB030A","SERVICE-5E7A98508D045780","SERVICE-F049E18B9F5052AF","SERVICE-A8E56BE4C59E5A52","SERVICE-C42840C16B3D478A","SERVICE-339B9A44EE7DB76B","SERVICE-86F0CD6065DA527C"})
+| filter contains(entity.name, "bc_adjui", caseSensitive:false) 
+   or contains(entity.name, "bc_nonadj", caseSensitive:false) 
+   or contains(entity.name, "bc_sharedacms", caseSensitive:false) 
+   or contains(entity.name, "bdcore", caseSensitive:false)
+   or contains(entity.name, "sharedaccumsui", caseSensitive:false)
+   or contains(entity.name, "MQSession", caseSensitive:false)
 | fields id, entity.name, tags
