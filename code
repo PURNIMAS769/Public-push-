@@ -1,27 +1,7 @@
-fetch dt.entity.ibmmq:queue_manager
-| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 
-   or arrayIndexOf(tags, "APP00005875") > -1
+fetch dt.entity.host
+| filter contains(entity.name, "pwauslwas84", caseSensitive:false) or contains(entity.name, "pwaulballpdl", caseSensitive:false) or contains(entity.name, "pwaulbitadmz", caseSensitive:false)
 | fields id, entity.name, tags
-
-
-fetch dt.entity.ibmmq:queue
-| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1 
-   or arrayIndexOf(tags, "APP00005875") > -1
-| fields id, entity.name, tags
-
-
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-| filter contains(entity.name, "MQ", caseSensitive:false) or contains(entity.name, "Queue", caseSensitive:false) or contains(entity.name, "Listener", caseSensitive:false)
-| fields id, entity.name, tags
-
-
 
 fetch dt.entity.service
-| filter arrayIndexOf(tags, "APPName:Blue_Chip_Benefit_Determination_Prod") > -1
-| filter contains(entity.name, "MQ", caseSensitive:false) or contains(entity.name, "CSQ", caseSensitive:false)
+| filter contains(entity.name, "sharedaccumsui", caseSensitive:false) or contains(entity.name, "com.hcsc.ccsp.nonadj", caseSensitive:false) or contains(entity.name, "com.hcsc.ccsp.bd.ui", caseSensitive:false)
 | fields id, entity.name, tags
-
-fetch dt.entity.custom_device
-| filter contains(entity.name, "CSQ", caseSensitive:false) or contains(entity.name, "MQMT", caseSensitive:false) or contains(entity.name, "MQHP", caseSensitive:false) or contains(entity.name, "MQLP", caseSensitive:false) or contains(entity.name, "MQJC", caseSensitive:false)
-| fields id, entity.name, tags, type
