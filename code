@@ -1,9 +1,1 @@
-fetch dt.entity.host
-| filter matchesPhrase(tags, "Blue_Chip_Benefit_Determination_Dev")
-| fields id, entity.name, tags
-
-
-fetch dt.entity.host
-| filter matchesPhrase(tags, "Blue_Chip_Benefit_Determination_Test")
-| fields id, entity.name, tags
-
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APPName:Blue_Chip_Benefit_Determination_Test\",\"APPName:Blue_Chip_Benefit_Determination_Dev\",\"APMID:APP00005875\")"))
