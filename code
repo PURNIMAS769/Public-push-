@@ -7,3 +7,8 @@ DT0C
 
 ODSUATDA
 ODSPRFDB
+
+
+| filter in("APPName:Blue_Chip_Benefit_Determination_Test", entity_tags)
+or in("APPName:Blue_Chip_Benefit_Determination_Dev", entity_tags)
+or in("APMID:APP00005875", entity_tags)
