@@ -1,16 +1,9 @@
 fetch dt.entity.host
-| fieldsAdd tag_match = arrayFilter(tags, {contains(_, "Blue_Chip_Benefit_Determination", caseSensitive:false)})
-| filter arraySize(tag_match) > 0
+| filter matchesPhrase(tags, "Blue_Chip_Benefit_Determination_Dev")
 | fields id, entity.name, tags
 
 
 fetch dt.entity.host
-| filter matchesPhrase(tags, "Blue_Chip_Benefit_Determination")
+| filter matchesPhrase(tags, "Blue_Chip_Benefit_Determination_Test")
 | fields id, entity.name, tags
 
-
-fetch dt.entity.host
-| filter contains(entity.name, "wauslwas", caseSensitive:false) or contains(entity.name, "wauslihsapp", caseSensitive:false)
-| filter not(contains(entity.name, "pwauslwas", caseSensitive:false)) and not(contains(entity.name, "pwauslihsapp", caseSensitive:false))
-| fields id, entity.name, tags
-| limit 30
