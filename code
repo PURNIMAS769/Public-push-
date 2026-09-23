@@ -1,14 +1,3 @@
-timeseries cpu_usage = avg(dt.host.cpu.usage),
-by:{dt.entity.host},
-from:-30d
-| fieldsAdd host_name = entityName(dt.entity.host)
-| filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
-
-
-timeseries
-mem_used = avg(dt.host.memory.used),
-mem_avail = avg(dt.host.memory.avail_bytes),
-by:{dt.entity.host},
-from:-30d
-| fieldsAdd host_name = entityName(dt.entity.host)
-| filter in(dt.entity.host, classicEntitySelector("type(host),tag(\"APPName:Blue_Chip_Benefit_Determination_Prod\")"))
+fetch dt.entity.host
+| filter contains(tags, "Blue_Chip_Benefit_Determination", caseSensitive:false)
+| fields id, entity.name, tags
