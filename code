@@ -1,30 +1,13 @@
-fetch dt.entity.process_group_instance, from:-24h
-| filter arrayIndexOf(tags, "APPName:Workflow_Inventory_Management_Prod") > -1 or arrayIndexOf(tags, "APMID:APP00006937") > -1
+fetch dt.entity.host
+| filter matchesPhrase(tags, "Blue_Chip_Application_-_Accums") or matchesPhrase(tags, "APP00006871")
 | fields id, entity.name, tags
 
 
-fetch dt.entity.host, from:-24h
-| filter arrayIndexOf(tags, "APPName:Workflow_Inventory_Management_Prod") > -1 or arrayIndexOf(tags, "APMID:APP00006937") > -1
-| fields id, entity.name, tags
-
-fetch dt.entity.service, from:-24h
-| filter arrayIndexOf(tags, "APPName:Workflow_Inventory_Management_Prod") > -1 or arrayIndexOf(tags, "APMID:APP00006937") > -1
-| fields id, entity.name, tags
+fetch dt.entity.custom_device
+| filter matchesPhrase(tags, "Blue_Chip_Application_-_Accums") or matchesPhrase(tags, "APP00006871")
+| fields id, entity.name, tags, type
 
 
-fetch dt.entity.process_group, from:-24h
-| filter arrayIndexOf(tags, "APPName:Workflow_Inventory_Management_Prod") > -1 or arrayIndexOf(tags, "APMID:APP00006937") > -1
-| fields id, entity.name, tags
-
-fetch dt.entity.http_check, from:-24h
-| filter arrayIndexOf(tags, "APPName:Workflow_Inventory_Management_Prod") > -1 or arrayIndexOf(tags, "APMID:APP00006937") > -1
-| fields id, entity.name, tags
-
-fetch dt.entity.custom_device, from:-24h
-| filter arrayIndexOf(tags, "APPName:Workflow_Inventory_Management_Prod") > -1 or arrayIndexOf(tags, "APMID:APP00006937") > -1
-| fields id, entity.name, tags
-
-
-fetch dt.entity.cloud_application, from:-24h
-| filter arrayIndexOf(tags, "APPName:Workflow_Inventory_Management_Prod") > -1 or arrayIndexOf(tags, "APMID:APP00006937") > -1
+fetch dt.entity.service
+| filter matchesPhrase(tags, "Blue_Chip_Application_-_Accums") or matchesPhrase(tags, "APP00006871")
 | fields id, entity.name, tags
