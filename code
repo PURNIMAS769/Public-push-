@@ -1,21 +1,7 @@
-fetch dt.entity.service
-| filter entity.name == "accumui"
-| fields id, entity.name, tags
+fetch dt.entity.cloud_application
+| filter matchesPhrase(tags, "APP00006871")
+| fields id, entity.name, tags, namespaceName
 
 fetch dt.entity.service
-| filter matchesPhrase(tags, "Accums")
+| filter matchesPhrase(tags, "APP00006871")
 | fields id, entity.name, tags
-
-fetch dt.entity.host
-| filter matchesPhrase(tags, "Accums")
-| fields id, entity.name, tags
-
-fetch dt.entity.custom_device
-| filter matchesPhrase(tags, "Accums")
-| fields id, entity.name, tags
-
-
-fetch dt.entity.host
-| filter matchesPhrase(tags, "6871")
-| fields id, entity.name, tags
-
