@@ -1,3 +1,10 @@
 APP00005754
 
 app00005754-blue-chip-duplicate-check
+
+
+n Dynatrace yourself:
+fetch dt.entity.process_group_instance
+| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
+| fieldsAdd appname_tags = tags[contains(tags, "APPName:")]
+| fields id, entity.name, appname_tags
