@@ -2,7 +2,7 @@ APP00005754
 
 app00005754-blue-chip-duplicate-check
 
-
+APPName:Blue_Chip_Duplicate_Check_-_CCSP_Prod
 first, then filter, then re-collect it. Here's the corrected version:
 
 fetch dt.entity.process_group_instance
