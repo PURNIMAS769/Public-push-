@@ -1,7 +1,3 @@
 fetch dt.entity.cloud_application
-| filter matchesPhrase(tags, "APP00006871")
+| filter matchesPhrase(tags, "APP00006805")
 | fields id, entity.name, tags, namespaceName
-
-fetch dt.entity.service
-| filter matchesPhrase(tags, "APP00006871")
-| fields id, entity.name, tags
