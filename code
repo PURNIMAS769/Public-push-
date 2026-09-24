@@ -13,3 +13,11 @@ fetch dt.entity.process_group_instance
 | summarize appname_tags = collectArray(tag_item), by:{base_id, base_name}
 
 What changed
+
+
+fetch dt.entity.process_group_instance
+| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
+| fieldsAdd base_id = id, base_name = entity.name
+| expand tag_item = tags
+| filter contains(tag_item, "APPName:")
+| summarize appname_tags = collectArray(tag_item), by:{base_id, base_name}
