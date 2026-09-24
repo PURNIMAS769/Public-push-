@@ -3,8 +3,13 @@ APP00005754
 app00005754-blue-chip-duplicate-check
 
 
-n Dynatrace yourself:
+first, then filter, then re-collect it. Here's the corrected version:
+
 fetch dt.entity.process_group_instance
 | filter arrayIndexOf(tags, "APMID:APP00005754") > -1
-| fieldsAdd appname_tags = tags[contains(tags, "APPName:")]
-| fields id, entity.name, appname_tags
+| fieldsAdd base_id = id, base_name = entity.name
+| expand tag_item = tags
+| filter contains(tag_item, "APPName:")
+| summarize appname_tags = collectArray(tag_item), by:{base_id, base_name}
+
+What changed
