@@ -1,3 +1,49 @@
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
+| fields id, entity.name, tags
+
+2️⃣ Service Layer — name-pattern fallback (in case tag doesn't resolve)
+fetch dt.entity.service
+| filter contains(entity.name, "dupcheck", caseSensitive:false) 
+   or contains(entity.name, "DupCheck", caseSensitive:false)
+| fields id, entity.name, tags
+
+3️⃣ Full chain — Service → Process Group Instance → Host (proven pattern from Core Adjudication build)
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
+| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
+| fieldsAdd host = runs_on[dt.entity.host]
+| fields id, entity.name, pgi, host
+
+4️⃣ Host Layer — direct host tag check
+fetch dt.entity.host
+| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
+| fields id, entity.name, tags
+
+5️⃣ OpenShift Namespace — classic tag path
+fetch dt.entity.cloud_application_namespace
+| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
+   or contains(entity.name, "dupcheck", caseSensitive:false)
+| fields id, entity.name, tags
+
+6️⃣ OpenShift Namespace — Grail field path (since namespace may belong to a different APM ID, per finding above)
+fetch dt.entity.cloud_application_namespace
+| filter contains(entity.name, "dupcheck", caseSensitive:false)
+   or contains(entity.name, "iris-claims-payment-integrity", caseSensitive:false)
+   or contains(entity.name, "046840", caseSensitive:false)
+| fields id, entity.name, tags
+
+7️⃣ OpenShift Workload/Pod Layer — cloud_application + instance
 fetch dt.entity.cloud_application
-| filter matchesPhrase(tags, "APP00006805")
-| fields id, entity.name, tags, namespaceName
+| filter contains(entity.name, "dupcheck", caseSensitive:false)
+| fields id, entity.name, belongs_to[dt.entity.cloud_application_namespace]
+
+fetch dt.entity.cloud_application_instance
+| filter contains(entity.name, "dupcheck", caseSensitive:false)
+| fields id, entity.name, belongs_to[dt.entity.cloud_application]
+
+8️⃣ Kubernetes Cluster confirmation (to know which ARO/OpenShift cluster this app expands into)
+fetch dt.entity.kubernetes_cluster
+| fieldsAdd ns = belongs_to[dt.entity.cloud_application_namespace]
+| filter contains(entity.name, "aro", caseSensitive:false) or contains(entity.name, "ocp", caseSensitive:false)
+| fields id, entity.name, ns
