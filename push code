@@ -23,3 +23,15 @@ fetch dt.entity.service
     | summarize count = count(), by:{dt.entity.service}
 ], kind:leftOuter, on:{left[id] == right[dt.entity.service]}, prefix:"traffic."
 | fields id, entity.name, traffic.count
+
+
+fetch spans, scanLimitGBytes: 100
+| filter in(dt.entity.service, array("SERVICE-859BF5A856406B16","SERVICE-ED08AFC2412F0B3D","SERVICE-351C09747EC7439D"))
+| summarize count = count(), by:{dt.entity.service}
+| sort count desc
+
+
+fetch spans, scanLimitGBytes: 100, from:-7d
+| filter in(dt.entity.service, array("SERVICE-859BF5A856406B16","SERVICE-ED08AFC2412F0B3D","SERVICE-351C09747EC7439D"))
+| summarize count = count(), by:{dt.entity.service}
+| sort count desc
