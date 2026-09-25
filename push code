@@ -35,4 +35,6 @@ fetch spans, from:-7d
     | fields trace.id, dt.entity.service
   ], on:trace.id
 | summarize count(), by:{dt.entity.service}
+
+kind:inner, on:{left[trace.id] == right[trace.id]}
 | sort count() desc
