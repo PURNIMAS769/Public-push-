@@ -22,3 +22,9 @@ fetch dt.entity.cloud_application_namespace
 fetch dt.entity.application
 | filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
 | fields id, entity.name, tags
+
+
+fetch spans, scanLimitGBytes: 100
+| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00005337\")"))
+| summarize count = count(), by:{server.address}
+| sort count desc
