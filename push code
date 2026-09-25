@@ -33,6 +33,6 @@ fetch spans, from:-7d
     fetch spans, from:-7d
     | filter in(dt.entity.service, array("SERVICE-859BF5A856406B16","SERVICE-ED08AFC2412F0B3D","SERVICE-351C09747EC7439D")) and span.kind == "server"
     | fields trace.id, dt.entity.service
-  ], kind:inner, on:{left[trace.id] == right[trace.id]}
+  ], on:trace.id
 | summarize count(), by:{dt.entity.service}
 | sort count() desc
