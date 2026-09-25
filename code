@@ -1,23 +1,7 @@
-APP00005754
-
-app00005754-blue-chip-duplicate-check
-
-APPName:Blue_Chip_Duplicate_Check_-_CCSP_Prod
-first, then filter, then re-collect it. Here's the corrected version:
-
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
-| fieldsAdd base_id = id, base_name = entity.name
-| expand tag_item = tags
-| filter contains(tag_item, "APPName:")
-| summarize appname_tags = collectArray(tag_item), by:{base_id, base_name}
-
-What changed
-
-
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
-| fieldsAdd base_id = id, base_name = entity.name
-| expand tag_item = tags
-| filter contains(tag_item, "APPName:")
-| summarize appname_tags = collectArray(tag_item), by:{base_id, base_name}
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
+| fieldsAdd pgi = runs_on[dt.entity.process_group_instance]
+| fieldsAdd host = runs_on[dt.entity.host]
+| fieldsAdd matched_apmid = arrayIndexOf(tags, "APMID:APP00005337") > -1
+| fieldsAdd matched_appname = arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
+| fields id, entity.name, pgi, host, matched_apmid, matched_appname
