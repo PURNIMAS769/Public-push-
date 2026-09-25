@@ -1,38 +1,17 @@
-fetch dt.entity.service
-| filter matchesValue(entity.name, "*ForgeRock*") or matchesValue(entity.name, "*forgerock*")
-| fields id, entity.name, tags
-
-fetch dt.entity.service
-| filter arrayIndexOf(tags, "APMID:APP00005337") > -1
-| fieldsAdd calls = toRelationships.calls[dt.entity.service]
-| fields id, entity.name, calls
-| expand calls
-
-
-fetch dt.entity.service
-| filter id in array("SERVICE-ED08AFC2412F0B3D","SERVICE-FD91B8527931BBC5","SERVICE-351C09747EC7439D")
-| fields id, entity.name, tags
-
-
-fetch dt.entity.service
-| filter in(id, array("SERVICE-859BF5A856406B16","SERVICE-ED08AFC2412F0B3D","SERVICE-351C09747EC7439D"))
-| fieldsAdd calling_service = "eliglock-ui"
+fetch dt.entity.process_group_instance
+| filter arrayIndexOf(tags, "APMID:APP0006808") > -1
+| fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else:false)
+| fieldsAdd dt.entity.process_group = instance_of[dt.entity.process_group]
 | join [
-    fetch spans, scanLimitGBytes: 100
-    | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00005337\")"))
-    | summarize count = count(), by:{dt.entity.service}
-], kind:leftOuter, on:{left[id] == right[dt.entity.service]}, prefix:"traffic."
-| fields id, entity.name, traffic.count
-
-
-fetch spans, from:-7d
-| filter in(dt.entity.service, array("SERVICE-859BF5A856406B16","SERVICE-ED08AFC2412F0B3D","SERVICE-351C09747EC7439D")) and span.kind == "server"
-| fields trace.id, target_service = dt.entity.service
-| join [
-    fetch spans, from:-7d
-    | filter dt.entity.service == "SERVICE-5CD2D573FB852480" and span.kind == "client"
-    | fields trace.id
-    | dedup trace.id
-  ], kind:inner, on:trace.id
-| summarize count(), by:{target_service}
-| sort count() desc
+    fetch dt.davis.problems, from:-60d
+    | filter event.status == "ACTIVE"
+    | expand affected_entity_ids
+    | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
+], kind:leftOuter, on:{id == affected_entity_ids}, prefix:"p."
+| fieldsAdd open_problem_count = if(isNull(p.problem_count), 0, else:p.problem_count)
+| fieldsAdd state = if(is_running == false, "DOWN (No Running Instance)",
+              else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else:"HEALTHY"))
+| fieldsAdd pgi_display_name = entityName(id)
+| fieldsRename dt.entity.process_group_instance = id
+| fields pgi_display_name, state, dt.entity.process_group_instance, dt.entity.process_group
+| sort state asc
