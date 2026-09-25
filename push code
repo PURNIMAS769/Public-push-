@@ -12,3 +12,14 @@ fetch dt.entity.service
 fetch dt.entity.service
 | filter id in array("SERVICE-ED08AFC2412F0B3D","SERVICE-FD91B8527931BBC5","SERVICE-351C09747EC7439D")
 | fields id, entity.name, tags
+
+
+fetch dt.entity.service
+| filter in(id, array("SERVICE-859BF5A856406B16","SERVICE-ED08AFC2412F0B3D","SERVICE-351C09747EC7439D"))
+| fieldsAdd calling_service = "eliglock-ui"
+| join [
+    fetch spans, scanLimitGBytes: 100
+    | filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00005337\")"))
+    | summarize count = count(), by:{dt.entity.service}
+], kind:leftOuter, on:{left[id] == right[dt.entity.service]}, prefix:"traffic."
+| fields id, entity.name, traffic.count
