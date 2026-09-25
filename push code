@@ -7,3 +7,8 @@ fetch dt.entity.service
 | fieldsAdd calls = toRelationships.calls[dt.entity.service]
 | fields id, entity.name, calls
 | expand calls
+
+
+fetch dt.entity.service
+| filter id in array("SERVICE-ED08AFC2412F0B3D","SERVICE-FD91B8527931BBC5","SERVICE-351C09747EC7439D")
+| fields id, entity.name, tags
