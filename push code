@@ -1,3 +1,9 @@
 fetch dt.entity.service
 | filter matchesValue(entity.name, "*ForgeRock*") or matchesValue(entity.name, "*forgerock*")
 | fields id, entity.name, tags
+
+fetch dt.entity.service
+| filter arrayIndexOf(tags, "APMID:APP00005337") > -1
+| fieldsAdd calls = toRelationships.calls[dt.entity.service]
+| fields id, entity.name, calls
+| expand calls
