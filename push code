@@ -1,17 +1,7 @@
+
 fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP0006808") > -1
-| fieldsAdd is_running = if(lifetime[end] > now() - 15m, true, else:false)
-| fieldsAdd dt.entity.process_group = instance_of[dt.entity.process_group]
-| join [
-    fetch dt.davis.problems, from:-60d
-    | filter event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize problem_count = countDistinct(event.id), by:{affected_entity_ids}
-], kind:leftOuter, on:{id == affected_entity_ids}, prefix:"p."
-| fieldsAdd open_problem_count = if(isNull(p.problem_count), 0, else:p.problem_count)
-| fieldsAdd state = if(is_running == false, "DOWN (No Running Instance)",
-              else: if(open_problem_count > 0, "UNHEALTHY (Active Alert)", else:"HEALTHY"))
-| fieldsAdd pgi_display_name = entityName(id)
-| fieldsRename dt.entity.process_group_instance = id
-| fields pgi_display_name, state, dt.entity.process_group_instance, dt.entity.process_group
-| sort state asc
+| filter arrayIndexOf(tags, "APMID:APP00005754") > -1
+| fieldsAdd base_id = id, base_name = entity.name
+| expand tag_item = tags
+| filter contains(tag_item, "APPName:")
+| summarize appname_tags = collectArray(tag_item), by:{base_id, base_name}
