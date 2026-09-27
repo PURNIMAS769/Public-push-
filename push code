@@ -1,2 +1,5 @@
 | fieldsAdd used_memory_gib = round(used_memory / 1073741824, decimals: 1),
             max_memory_gib  = round(max_memory  / 1073741824, decimals: 1)
+
+| fieldsAdd used_cpu_core = round(used_cpu / 1000, decimals: 2),
+            max_cpu_core  = round(max_cpu  / 1000, decimals: 2)
