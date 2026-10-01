@@ -2,3 +2,8 @@
 fetch `dt.entity.ibmmq:queue_manager`
 | fields entity.name
 | sort entity.name asc
+
+fetch `dt.entity.ibmmq:queue_manager`
+| filter contains(tags, "IBMMessageQueue-Distributed")
+| fields id, entity.name, tags
+| sort entity.name asc
