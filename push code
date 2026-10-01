@@ -14,3 +14,9 @@ timeseries oldest = avg(ibmmq.queue.oldest_message),
   interval:1m
 | fields queue_manager
 | limit 10
+
+fetch dt.entity.ibmmq:local_queue
+| filter in(belongs_to[dt.entity.ibmmq:queue_manager], array($Queue_Manager))
+| filter entity.name != "SYSTEM.RETAINED"
+| fields queue_name = entity.name
+| sort queue_name asc
