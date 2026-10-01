@@ -7,3 +7,10 @@ fetch `dt.entity.ibmmq:queue_manager`
 | filter contains(tags, "IBMMessageQueue-Distributed")
 | fields id, entity.name, tags
 | sort entity.name asc
+
+
+timeseries oldest = avg(ibmmq.queue.oldest_message),
+  by:{queue_manager},
+  interval:1m
+| fields queue_manager
+| limit 10
