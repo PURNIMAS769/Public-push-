@@ -22,7 +22,7 @@ fetch `dt.entity.ibmmq:local_queue`
 
 fetch `dt.entity.ibmmq:local_queue`
 | fieldsAdd queue_manager, queue_name
-| filter queue_manager == $Queue_Manager
+| filter in(queue_manager, array($queue_manager))
 | fields queue_name
 | dedup queue_name
 | sort queue_name asc
