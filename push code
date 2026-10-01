@@ -19,3 +19,7 @@ fetch `dt.entity.ibmmq:local_queue`
 | filter queue_manager_name == $queue_manager
 | fields queue_name = entity.name
 | sort queue_name asc
+
+fetch `dt.entity.ibmmq:local_queue`
+| fieldsAdd belongs_to, runs_on, child_of, instance_of
+| limit 10
