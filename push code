@@ -20,10 +20,6 @@ fetch `dt.entity.ibmmq:local_queue`
 | fields queue_name = entity.name
 | sort queue_name asc
 
-fetch `dt.entity.ibmmq:local_queue`
-| fieldsAdd queue_manager, queue_name
-| filter in(queue_manager, array($queue_manager))
-| fields queue_name
-| dedup queue_name
-| sort queue_name asc
-| limit 2000000
+filter: in(queue_manager, array($queue_manager))
+
+| filter in(queue_manager, array($queue_manager)) and in(queue_name, array($Queue))
