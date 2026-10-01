@@ -1,1 +1,4 @@
 | filter in(entity.name, array($Host_Name))
+fetch `dt.entity.ibmmq:queue_manager`
+| fields entity.name
+| sort entity.name asc
