@@ -21,5 +21,9 @@ fetch `dt.entity.ibmmq:local_queue`
 | sort queue_name asc
 
 fetch `dt.entity.ibmmq:local_queue`
-| fieldsAdd belongs_to, runs_on, child_of, instance_of
-| limit 10
+| fieldsAdd queue_manager, queue_name
+| filter queue_manager == $Queue_Manager
+| fields queue_name
+| dedup queue_name
+| sort queue_name asc
+| limit 2000000
