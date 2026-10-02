@@ -1,12 +1,8 @@
+fetch dt.entity.custom_device
+| filter in(id, array("CUSTOM_DEVICE-156B6B8BF7CD474A","CUSTOM_DEVICE-D6EBCB3665733A90","CUSTOM_DEVICE-A6EA893B32D2884E"))
+| fieldsAdd tags
+
+
 fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter in("IBMMessageQueue-Distributed", entity_tags)
-| dedup display_id, sort:{timestamp desc}
-| expand qname = affected_entity_names
-| lookup [
-    timeseries x = avg(ibmmq.queue.oldest_message), by:{queue_manager, queue_name}, from:-7d
-    | summarize qm_count = countDistinct(queue_manager),
-                qms = collectDistinct(queue_manager), by:{queue_name}
-  ], sourceField:qname, lookupField:queue_name, prefix:"q."
-| fields display_id, event.category, qname, q.qm_count, q.qms
-| sort q.qm_count asc
+| filter display_id == "P-260913978"
+| limit 1
