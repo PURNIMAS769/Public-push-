@@ -1,18 +1,3 @@
-timeseries depth = max(ibmmq.queue.depth, scalar:true), from:-1h,
-by:{queue_name, queue_manager},
-filter:{
-  endsWith(queue_name, ".SQ", caseSensitive:false) and
-  not(contains(queue_name, "BCKUP")) and
-  not(contains(queue_name, "TMP")) and
-  not(contains(queue_name, "SUS")) and
-  not(contains(queue_name, "ERR")) and
-  not(contains(queue_name, "TEMP"))
-}
-| fields queue_manager, queue_name, depth
-| filter in(queue_manager, array($queue_manager))
-| filter in(queue_name, array($queue))
-| sort depth desc
-| limit 30
-
-
-contains(queue_name, ".SQ", caseSensitive:false) and
+| fieldsAdd up_d = floor(uptime_sec / 86400)
+| fieldsAdd up_h = floor((uptime_sec % 86400) / 3600)
+| fieldsAdd Uptime = concat(toString(up_d), "d ", toString(up_h), "h")
