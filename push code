@@ -23,3 +23,18 @@ fetch `dt.entity.ibmmq:local_queue`
 filter: in(queue_manager, array($queue_manager))
 
 | filter in(queue_manager, array($queue_manager)) and in(queue_name, array($Queue))
+
+data record(queue_name = "ALL")
+| append [
+    fetch `dt.entity.ibmmq:local_queue`
+    | fieldsAdd queue_manager, queue_name
+    | filter in(queue_manager, array($queue_manager))
+    | fields queue_name
+    | dedup queue_name
+    | sort queue_name asc
+  ]
+| fields queue_name
+
+
+| filter in(queue_manager, array($queue_manager))
+     and (in("ALL", array($Queue)) or in(queue_name, array($Queue)))
