@@ -1,13 +1,12 @@
 timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true, default:0),
-  by:{`dt.entity.ibmmq:queue_manager`},
-  filter:{ in(`dt.entity.ibmmq:queue_manager`,
-    classicEntitySelector("type(ibmmq:queue_manager),tag(\"IBMMessageQueue-Distributed\")")) }
-| fieldsAdd queue_manager = entityName(`dt.entity.ibmmq:queue_manager`)
+  by:{queue_manager, `dt.entity.ibmmq:queue_manager`},
+  filter:{ in(queue_manager, "MQFB","MQL1","MQLP","MQHP","MQH1","MQGP","MQEP") }
+| fieldsAdd entity_name = entityName(`dt.entity.ibmmq:queue_manager`)
 | filter in(queue_manager, array($queue_manager))
 | lookup [
     fetch dt.davis.problems
     | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | filter in("IBMMessageQueue-Distributed", entity_tags)
+    | filter iAny(contains(affected_entity_types[], "ibmmq"))
     | dedup display_id, sort:{timestamp desc}
     | fieldsAdd alert_mins = (now() - event.start) / 1m
     | expand qid = affected_entity_ids
@@ -32,5 +31,16 @@ timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true, default:0)
             max_alert_mins = round(coalesce(p.max_alert_mins, 0), decimals:1)
 | fieldsAdd status = if(avail_critical > 0, "CRITICAL",
                      else: if(active_alerts > 0, "WARNING", else: "OK"))
-| fields queue_manager, avail, status, active_alerts, avail_critical, max_alert_mins
-| sort active_alerts desc
+| fields queue_manager, entity_name, avail, status, active_alerts, avail_critical, max_alert_mins
+| sort avail desc
+| limit 20
+
+
+| summarize total    = count(),
+            critical = countIf(status == "CRITICAL"),
+            warning  = countIf(status == "WARNING"),
+            ok       = countIf(status == "OK"),
+            active_alerts = sum(active_alerts)
+
+
+
