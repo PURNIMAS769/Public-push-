@@ -3,3 +3,4 @@
 | fieldsAdd Uptime = concat(toString(up_d), "d ", toString(up_h), "h")
 | fieldsAdd uptime_sec = arrayLast(arrayRemoveNulls(uptime_raw))
 | fieldsAdd uptime_days = round(uptime_sec / 86400, decimals:1)
+| fieldsAdd Restarted_24h = if(uptime_sec < 86400, "YES", else:"NO")
