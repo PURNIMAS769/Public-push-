@@ -8,20 +8,23 @@ timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true, default:0)
     fetch dt.davis.problems
     | filter not(dt.davis.is_duplicate)
     | filter in("IBMMessageQueue-Distributed", entity_tags)
-    | filter event.category == "AVAILABILITY"          // adjust after Step 1
     | dedup display_id, sort:{timestamp desc}
-    | fieldsAdd alert_end = if(event.status == "ACTIVE", now(), else: event.end)
+    | fieldsAdd alert_end  = if(event.status == "ACTIVE", now(), else: event.end)
     | fieldsAdd alert_mins = (alert_end - event.start) / 1m
-    | expand qm_id = affected_entity_ids
-    | summarize alert_count   = count(),
-                active_alerts = countIf(event.status == "ACTIVE"),
+    | lookup [
+        timeseries x = avg(ibmmq.queue.oldest_message), by:{queue_manager, queue_name}
+        | fields queue_manager, queue_name
+      ], sourceField:root_cause_entity_name, lookupField:queue_name, prefix:"q."
+    | fieldsAdd qm = coalesce(q.queue_manager, root_cause_entity_name)
+    | summarize alert_count    = count(),
+                active_alerts  = countIf(event.status == "ACTIVE"),
                 max_alert_mins = max(alert_mins),
-                by:{qm_id}
-  ], sourceField:`dt.entity.ibmmq:queue_manager`, lookupField:qm_id, prefix:"p."
-| fieldsAdd alert_count = coalesce(p.alert_count, 0),
+                by:{qm}
+  ], sourceField:queue_manager, lookupField:qm, prefix:"p."
+| fieldsAdd alert_count    = coalesce(p.alert_count, 0),
+            active_alerts  = coalesce(p.active_alerts, 0),
             max_alert_mins = round(coalesce(p.max_alert_mins, 0), decimals:1)
 | fieldsAdd status = if(max_alert_mins > 5, "CRITICAL",
-                     else: if(alert_count > 0, "WARNING",
-                     else: "OK"))
-| fields queue_manager, avail, status, alert_count, p.active_alerts, max_alert_mins
-| sort avail asc
+                     else: if(alert_count > 0, "WARNING", else: "OK"))
+| fields queue_manager, avail, status, alert_count, active_alerts, max_alert_mins
+| sort max_alert_mins desc
