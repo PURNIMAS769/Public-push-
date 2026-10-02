@@ -1,46 +1,25 @@
-timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true, default:0),
-  by:{queue_manager, `dt.entity.ibmmq:queue_manager`},
-  filter:{ in(queue_manager, "MQFB","MQL1","MQLP","MQHP","MQH1","MQGP","MQEP") }
-| fieldsAdd entity_name = entityName(`dt.entity.ibmmq:queue_manager`)
-| filter in(queue_manager, array($queue_manager))
+fetch dt.entity.host
+| filter matchesValue(tags, "IBM MQ") and osType == "AIX"
 | lookup [
-    fetch dt.davis.problems
+    fetch dt.davis.problems, from:-30d
     | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | filter iAny(contains(affected_entity_types[], "ibmmq"))
     | dedup display_id, sort:{timestamp desc}
     | fieldsAdd alert_mins = (now() - event.start) / 1m
-    | expand qid = affected_entity_ids
-    | lookup [
-        fetch `dt.entity.ibmmq:local_queue`
-        | fields qid = id, qm_entity = actual_qm_name
-      ], sourceField:qid, lookupField:qid, prefix:"e."
-    | lookup [
-        timeseries x = avg(ibmmq.queue.oldest_message),
-          by:{`dt.entity.ibmmq:local_queue`, queue_manager}, from:-7d
-        | fields qid = `dt.entity.ibmmq:local_queue`, queue_manager
-      ], sourceField:qid, lookupField:qid, prefix:"q."
-    | fieldsAdd qm = coalesce(e.qm_entity, q.queue_manager)
-    | dedup display_id
-    | summarize active_alerts  = count(),
-                avail_critical = countIf(event.category == "AVAILABILITY" and alert_mins > 5),
+    | expand hid = affected_entity_ids
+    | filter startsWith(hid, "HOST-")
+    | summarize active_alerts  = countDistinct(display_id),
+                avail_critical = countDistinctIf(display_id, event.category == "AVAILABILITY" and alert_mins > 5),
                 max_alert_mins = max(alert_mins),
-                by:{qm}
-  ], sourceField:queue_manager, lookupField:qm, prefix:"p."
+                by:{hid}
+  ], sourceField:id, lookupField:hid, prefix:"p."
 | fieldsAdd active_alerts  = coalesce(p.active_alerts, 0),
             avail_critical = coalesce(p.avail_critical, 0),
             max_alert_mins = round(coalesce(p.max_alert_mins, 0), decimals:1)
-| fieldsAdd status = if(avail_critical > 0, "CRITICAL",
-                     else: if(active_alerts > 0, "WARNING", else: "OK"))
-| fields queue_manager, entity_name, avail, status, active_alerts, avail_critical, max_alert_mins
-| sort avail desc
-| limit 20
-
-
-| summarize total    = count(),
-            critical = countIf(status == "CRITICAL"),
-            warning  = countIf(status == "WARNING"),
-            ok       = countIf(status == "OK"),
-            active_alerts = sum(active_alerts)
-
-
-
+| fieldsAdd status = if(state != "RUNNING", "DOWN",
+                     else: if(avail_critical > 0, "CRITICAL",
+                     else: if(active_alerts > 0, "WARNING", else: "OK")))
+| fieldsAdd health = if(status == "DOWN", 0,
+                     else: if(status == "CRITICAL", 25,
+                     else: if(status == "WARNING", 50, else: 100)))
+| fields id, entity.name, health, status, state, active_alerts, avail_critical, max_alert_mins
+| sort health asc
