@@ -1,23 +1,10 @@
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter in("IBMMessageQueue-Distributed", entity_tags)
-| dedup display_id, sort:{timestamp desc}
-| expand qid = affected_entity_ids
-| lookup [
-    timeseries x = avg(ibmmq.queue.oldest_message),
-      by:{`dt.entity.ibmmq:local_queue`, queue_manager}, from:-7d
-    | fields qid = `dt.entity.ibmmq:local_queue`, queue_manager
-  ], sourceField:qid, lookupField:qid, prefix:"q."
-| lookup [
-    timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true),
-      by:{`dt.entity.ibmmq:queue_manager`},
-      filter:{ in(`dt.entity.ibmmq:queue_manager`,
-        classicEntitySelector("type(ibmmq:queue_manager),tag(\"IBMMessageQueue-Distributed\")")) }
-    | fieldsAdd qm_name = entityName(`dt.entity.ibmmq:queue_manager`)
-    | fields qm_name
-  ], sourceField:q.queue_manager, lookupField:qm_name, prefix:"a."
-| fieldsAdd reason = if(isNull(q.queue_manager), "Queue not in metric (no QM mapping)",
-                     else: if(isNull(a.qm_name), "QM not in Distributed availability list",
-                     else: "OK"))
-| filter reason != "OK"
-| fields display_id, affected_entity_names, qid, q.queue_manager, reason
+timeseries x = avg(ibmmq.queue.oldest_message),
+  by:{`dt.entity.ibmmq:local_queue`, queue_manager, queue_name}, from:-30d
+| filter in(`dt.entity.ibmmq:local_queue`,
+    array("CUSTOM_DEVICE-524F5EAAFC39F5B7","CUSTOM_DEVICE-AE99621A7FFDD5B2"))
+| fields `dt.entity.ibmmq:local_queue`, queue_manager, queue_name
+
+
+fetch `dt.entity.ibmmq:local_queue`
+| filter in(id, array("CUSTOM_DEVICE-524F5EAAFC39F5B7","CUSTOM_DEVICE-AE99621A7FFDD5B2"))
+| fieldsAdd tags
