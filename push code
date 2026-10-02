@@ -1,25 +1,10 @@
-fetch dt.entity.host
-| filter matchesValue(tags, "IBM MQ") and osType == "AIX"
+fetch dt.davis.problems, from:-30d
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| expand hid = affected_entity_ids
+| filter in(hid, array("HOST-71077A9B6F464D7D","HOST-57808AD7F7654592"))
 | lookup [
-    fetch dt.davis.problems, from:-30d
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | dedup display_id, sort:{timestamp desc}
-    | fieldsAdd alert_mins = (now() - event.start) / 1m
-    | expand hid = affected_entity_ids
-    | filter startsWith(hid, "HOST-")
-    | summarize active_alerts  = countDistinct(display_id),
-                avail_critical = countDistinctIf(display_id, event.category == "AVAILABILITY" and alert_mins > 5),
-                max_alert_mins = max(alert_mins),
-                by:{hid}
-  ], sourceField:id, lookupField:hid, prefix:"p."
-| fieldsAdd active_alerts  = coalesce(p.active_alerts, 0),
-            avail_critical = coalesce(p.avail_critical, 0),
-            max_alert_mins = round(coalesce(p.max_alert_mins, 0), decimals:1)
-| fieldsAdd status = if(state != "RUNNING", "DOWN",
-                     else: if(avail_critical > 0, "CRITICAL",
-                     else: if(active_alerts > 0, "WARNING", else: "OK")))
-| fieldsAdd health = if(status == "DOWN", 0,
-                     else: if(status == "CRITICAL", 25,
-                     else: if(status == "WARNING", 50, else: 100)))
-| fields id, entity.name, health, status, state, active_alerts, avail_critical, max_alert_mins
-| sort health asc
+    fetch dt.entity.host
+    | fieldsAdd mq = if(matchesValue(tags, "IBM MQ"), "yes", else:"no")
+    | fields id, osType, mq
+  ], sourceField:hid, lookupField:id, prefix:"host."
+| fields display_id, event.name, event.category, hid, host.osType, host.mq
