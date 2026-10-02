@@ -1,15 +1,36 @@
-fetch `dt.entity.ibmmq:local_queue`
-| filter in(id, array("CUSTOM_DEVICE-524F5EAAFC39F5B7","CUSTOM_DEVICE-AE99621A7FFDD5B2"))
-| expand tags
-| fields entity.name, tags
-
-fetch `dt.entity.ibmmq:local_queue`
-| filter in(id, array("CUSTOM_DEVICE-524F5EAAFC39F5B7","CUSTOM_DEVICE-AE99621A7FFDD5B2"))
-| fieldsAdd belongs_to
-| fields entity.name, belongs_to
-
-
-fetch `dt.entity.ibmmq:queue_manager`
-| expand tags
-| filter contains(tags, "pwauslmqap0103") or contains(tags, "pwauslmqap0603")
-| fields entity.name, tags
+timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true, default:0),
+  by:{`dt.entity.ibmmq:queue_manager`},
+  filter:{ in(`dt.entity.ibmmq:queue_manager`,
+    classicEntitySelector("type(ibmmq:queue_manager),tag(\"IBMMessageQueue-Distributed\")")) }
+| fieldsAdd queue_manager = entityName(`dt.entity.ibmmq:queue_manager`)
+| filter in(queue_manager, array($queue_manager))
+| lookup [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | filter in("IBMMessageQueue-Distributed", entity_tags)
+    | dedup display_id, sort:{timestamp desc}
+    | fieldsAdd alert_mins = (now() - event.start) / 1m
+    | expand qid = affected_entity_ids
+    | lookup [
+        fetch `dt.entity.ibmmq:local_queue`
+        | fields qid = id, qm_entity = actual_qm_name
+      ], sourceField:qid, lookupField:qid, prefix:"e."
+    | lookup [
+        timeseries x = avg(ibmmq.queue.oldest_message),
+          by:{`dt.entity.ibmmq:local_queue`, queue_manager}, from:-7d
+        | fields qid = `dt.entity.ibmmq:local_queue`, queue_manager
+      ], sourceField:qid, lookupField:qid, prefix:"q."
+    | fieldsAdd qm = coalesce(e.qm_entity, q.queue_manager)
+    | dedup display_id
+    | summarize active_alerts  = count(),
+                avail_critical = countIf(event.category == "AVAILABILITY" and alert_mins > 5),
+                max_alert_mins = max(alert_mins),
+                by:{qm}
+  ], sourceField:queue_manager, lookupField:qm, prefix:"p."
+| fieldsAdd active_alerts  = coalesce(p.active_alerts, 0),
+            avail_critical = coalesce(p.avail_critical, 0),
+            max_alert_mins = round(coalesce(p.max_alert_mins, 0), decimals:1)
+| fieldsAdd status = if(avail_critical > 0, "CRITICAL",
+                     else: if(active_alerts > 0, "WARNING", else: "OK"))
+| fields queue_manager, avail, status, active_alerts, avail_critical, max_alert_mins
+| sort active_alerts desc
