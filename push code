@@ -1,6 +1,27 @@
-| fieldsAdd up_d = floor(uptime_sec / 86400)
-| fieldsAdd up_h = floor((uptime_sec % 86400) / 3600)
-| fieldsAdd Uptime = concat(toString(up_d), "d ", toString(up_h), "h")
-| fieldsAdd uptime_sec = arrayLast(arrayRemoveNulls(uptime_raw))
-| fieldsAdd uptime_days = round(uptime_sec / 86400, decimals:1)
-| fieldsAdd Restarted_24h = if(uptime_sec < 86400, "YES", else:"NO")
+timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true, default:0),
+  by:{`dt.entity.ibmmq:queue_manager`},
+  filter:{ in(`dt.entity.ibmmq:queue_manager`,
+    classicEntitySelector("type(ibmmq:queue_manager),tag(\"IBMMessageQueue-Distributed\")")) }
+| fieldsAdd queue_manager = entityName(`dt.entity.ibmmq:queue_manager`)
+| filter in(queue_manager, array($queue_manager))
+| lookup [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate)
+    | filter in("IBMMessageQueue-Distributed", entity_tags)
+    | filter event.category == "AVAILABILITY"          // adjust after Step 1
+    | dedup display_id, sort:{timestamp desc}
+    | fieldsAdd alert_end = if(event.status == "ACTIVE", now(), else: event.end)
+    | fieldsAdd alert_mins = (alert_end - event.start) / 1m
+    | expand qm_id = affected_entity_ids
+    | summarize alert_count   = count(),
+                active_alerts = countIf(event.status == "ACTIVE"),
+                max_alert_mins = max(alert_mins),
+                by:{qm_id}
+  ], sourceField:`dt.entity.ibmmq:queue_manager`, lookupField:qm_id, prefix:"p."
+| fieldsAdd alert_count = coalesce(p.alert_count, 0),
+            max_alert_mins = round(coalesce(p.max_alert_mins, 0), decimals:1)
+| fieldsAdd status = if(max_alert_mins > 5, "CRITICAL",
+                     else: if(alert_count > 0, "WARNING",
+                     else: "OK"))
+| fields queue_manager, avail, status, alert_count, p.active_alerts, max_alert_mins
+| sort avail asc
