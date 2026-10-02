@@ -1,3 +1,5 @@
 | fieldsAdd up_d = floor(uptime_sec / 86400)
 | fieldsAdd up_h = floor((uptime_sec % 86400) / 3600)
 | fieldsAdd Uptime = concat(toString(up_d), "d ", toString(up_h), "h")
+| fieldsAdd uptime_sec = arrayLast(arrayRemoveNulls(uptime_raw))
+| fieldsAdd uptime_days = round(uptime_sec / 86400, decimals:1)
