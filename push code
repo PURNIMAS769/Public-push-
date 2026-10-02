@@ -1,40 +1,18 @@
-| filter in(entity.name, array($Host_Name))
-fetch `dt.entity.ibmmq:queue_manager`
-| fields entity.name
-| sort entity.name asc
-
-fetch `dt.entity.ibmmq:queue_manager`
-| filter contains(tags, "IBMMessageQueue-Distributed")
-| fields id, entity.name, tags
-| sort entity.name asc
-
-
-timeseries oldest = avg(ibmmq.queue.oldest_message),
-  by:{queue_manager},
-  interval:1m
-| fields queue_manager
-| limit 10
-
-fetch `dt.entity.ibmmq:local_queue`
-| filter queue_manager_name == $queue_manager
-| fields queue_name = entity.name
-| sort queue_name asc
-
-filter: in(queue_manager, array($queue_manager))
-
-| filter in(queue_manager, array($queue_manager)) and in(queue_name, array($Queue))
-
-data record(queue_name = "ALL")
-| append [
-    fetch `dt.entity.ibmmq:local_queue`
-    | fieldsAdd queue_manager, queue_name
-    | filter in(queue_manager, array($queue_manager))
-    | fields queue_name
-    | dedup queue_name
-    | sort queue_name asc
-  ]
-| fields queue_name
-
-
+timeseries depth = max(ibmmq.queue.depth, scalar:true), from:-1h,
+by:{queue_name, queue_manager},
+filter:{
+  endsWith(queue_name, ".SQ", caseSensitive:false) and
+  not(contains(queue_name, "BCKUP")) and
+  not(contains(queue_name, "TMP")) and
+  not(contains(queue_name, "SUS")) and
+  not(contains(queue_name, "ERR")) and
+  not(contains(queue_name, "TEMP"))
+}
+| fields queue_manager, queue_name, depth
 | filter in(queue_manager, array($queue_manager))
-     and (in("ALL", array($Queue)) or in(queue_name, array($Queue)))
+| filter in(queue_name, array($queue))
+| sort depth desc
+| limit 30
+
+
+contains(queue_name, ".SQ", caseSensitive:false) and
