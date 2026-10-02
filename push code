@@ -1,10 +1,15 @@
-timeseries x = avg(ibmmq.queue.oldest_message),
-  by:{`dt.entity.ibmmq:local_queue`, queue_manager, queue_name}, from:-30d
-| filter in(`dt.entity.ibmmq:local_queue`,
-    array("CUSTOM_DEVICE-524F5EAAFC39F5B7","CUSTOM_DEVICE-AE99621A7FFDD5B2"))
-| fields `dt.entity.ibmmq:local_queue`, queue_manager, queue_name
-
+fetch `dt.entity.ibmmq:local_queue`
+| filter in(id, array("CUSTOM_DEVICE-524F5EAAFC39F5B7","CUSTOM_DEVICE-AE99621A7FFDD5B2"))
+| expand tags
+| fields entity.name, tags
 
 fetch `dt.entity.ibmmq:local_queue`
 | filter in(id, array("CUSTOM_DEVICE-524F5EAAFC39F5B7","CUSTOM_DEVICE-AE99621A7FFDD5B2"))
-| fieldsAdd tags
+| fieldsAdd belongs_to
+| fields entity.name, belongs_to
+
+
+fetch `dt.entity.ibmmq:queue_manager`
+| expand tags
+| filter contains(tags, "pwauslmqap0103") or contains(tags, "pwauslmqap0603")
+| fields entity.name, tags
