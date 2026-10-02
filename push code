@@ -27,3 +27,24 @@ timeseries avail = avg(ibmmq.queue_manager.availability, scalar:true, default:0)
                      else: if(active_alerts > 0, "WARNING", else: "OK"))
 | fields queue_manager, avail, status, active_alerts, avail_critical, max_alert_mins
 | sort active_alerts desc
+
+
+
+fetch dt.davis.problems
+| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+| filter in("IBMMessageQueue-Distributed", entity_tags)
+| dedup display_id, sort:{timestamp desc}
+| lookup [
+    timeseries x = avg(ibmmq.queue.oldest_message), by:{queue_manager, queue_name}, from:-7d
+    | summarize qm_count = countDistinct(queue_manager),
+                qms = collectDistinct(queue_manager), by:{queue_name}
+  ], sourceField:root_cause_entity_name, lookupField:queue_name, prefix:"q."
+| fields display_id, root_cause_entity_name, affected_entity_ids, q.qm_count, q.qms
+| sort q.qm_count desc
+
+
+
+
+timeseries x = avg(ibmmq.queue.oldest_message),
+  by:{`dt.entity.ibmmq:queue`, queue_manager}, from:-2h
+| limit 10
