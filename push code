@@ -1,162 +1,45 @@
-Check 1: find the shared service
-fetch dt.entity.service
-| fields id, name = entity.name, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| summarize apmids = countDistinctExact(tag), by:{id, name}
-| filter apmids > 1
-| sort apmids desc
-| limit 20
-
-
-I expect one or a few services tagged with 30+ APMIDs. The fix below only counts services tagged with exactly one APMID against that app. Shared services will appear later in Section 9 under shared dependencies.
-
-Check 2: the corrected sub-queries (run each on its own first)
-
-Names for host-only apps
-
-fetch dt.entity.host
-| fields id, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:") or startsWith(tag, "APPName:")
-| summarize ids   = collectDistinct(if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1])),
-            names = collectDistinct(if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1])),
-            by:{id}
-| fieldsAdd ids = arrayRemoveNulls(ids), names = arrayRemoveNulls(names)
-| filter arraySize(ids) == 1 and arraySize(names) > 0
-| fieldsAdd apmid = ids[0],
-            hostName = replaceString(replaceString(names[0], "_Test", ""), "_Dev", "")
-| summarize hostName = takeFirst(hostName), by:{apmid}
-
-
-Check: APP00004114 should show Blue_Squared.
-
-Services tagged to one app only
-
-fetch dt.entity.service
-| fields id, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
-| filter arraySize(apmids) == 1
-| fieldsAdd apmid = apmids[0]
-| filter in(apmid, array($ClaimsApps))
-| summarize services = count(), by:{apmid}
-
-The combined rollup tile (2.6)
-
-Visual: Table. Set conditional colouring on the health column.
-
+Step 1: Test it on its own (run in a Notebook first)
 data record(apmid = array($ClaimsApps))
 | expand apmid
-// names + namespace count
+// hosts that sent data in the last 24h (known) and the last 15m (up)
 | lookup [
-    fetch dt.entity.cloud_application_namespace
-    | fields id, name = entity.name, tags
-    | expand tag = tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | parse name, "LD '-' LD:nsName"
-    | summarize nsName = takeFirst(nsName), namespaces = countDistinctExact(id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "n."
-// names for host-only apps
-| lookup [
-    fetch dt.entity.host
-    | fields id, tags
-    | expand tag = tags
-    | filter startsWith(tag, "APMID:") or startsWith(tag, "APPName:")
-    | summarize ids   = collectDistinct(if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1])),
-                names = collectDistinct(if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1])),
-                by:{id}
-    | fieldsAdd ids = arrayRemoveNulls(ids), names = arrayRemoveNulls(names)
-    | filter arraySize(ids) == 1 and arraySize(names) > 0
-    | fieldsAdd apmid = ids[0],
-                hostName = replaceString(replaceString(names[0], "_Test", ""), "_Dev", "")
-    | summarize hostName = takeFirst(hostName), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "hn."
-// total hosts (entity)
-| lookup [
-    fetch dt.entity.host
-    | fields id, tags
-    | expand tag = tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize hostsTotal = countDistinctExact(id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "ht."
-// hosts sending data in last 15 min
-| lookup [
-    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-15m
-    | filter arraySize(arrayRemoveNulls(cpu)) > 0
+    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-24h
+    | fieldsAdd up = arraySize(arrayRemoveNulls(arraySlice(cpu, from:-3))) > 0
     | lookup [ fetch dt.entity.host | fields id, tags ],
              sourceField: dt.entity.host, lookupField: id, prefix: "e."
     | expand tag = e.tags
     | filter startsWith(tag, "APMID:")
     | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize hostsUp = countDistinctExact(dt.entity.host), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "hu."
-// services tagged to one app only
-| lookup [
-    timeseries {req = sum(dt.service.request.count), fail = sum(dt.service.request.failure_count)},
-               by:{dt.entity.service}, from:-1h
-    | fieldsAdd req = arraySum(req), fail = arraySum(fail)
-    | lookup [
-        fetch dt.entity.service
-        | fields id, tags
-        | expand tag = tags
-        | filter startsWith(tag, "APMID:")
-        | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
-        | filter arraySize(apmids) == 1
-        | fieldsAdd apmid = apmids[0]
-        | fields id, apmid
-      ], sourceField: dt.entity.service, lookupField: id, prefix: "e."
-    | filter isNotNull(e.apmid)
-    | summarize services = countDistinctExact(dt.entity.service),
-                requests = sum(req), failures = sum(fail), by:{apmid = e.apmid}
-    | fieldsAdd failRatePct = if(requests > 0, round(100.0 * failures / requests, decimals:2), else: 0.0)
-  ], sourceField: apmid, lookupField: apmid, prefix: "s."
-// container restarts
-| lookup [
-    timeseries restarts = sum(dt.kubernetes.container.restarts), by:{k8s.namespace.name}, from:-1h
-    | fieldsAdd restarts = arraySum(restarts)
-    | filter startsWith(k8s.namespace.name, "app")
-    | fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
-    | summarize restarts1h = sum(restarts), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "k."
-// active problems
+    | summarize hostsKnown = countDistinctExact(dt.entity.host),
+                hostsUp    = countDistinctExact(if(up, dt.entity.host)),
+                downHosts  = collectDistinct(if(not(up), dt.entity.host)),
+                by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "h."
+// active Davis problems on hosts
 | lookup [
     fetch dt.davis.problems, from:-30d
     | sort timestamp desc
     | dedup display_id
     | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | expand tag = entity_tags
+    | expand hostId = affected_entity_ids
+    | filter startsWith(hostId, "HOST-")
+    | lookup [ fetch dt.entity.host | fields id, tags ],
+             sourceField: hostId, lookupField: id, prefix: "e."
+    | expand tag = e.tags
     | filter startsWith(tag, "APMID:")
     | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize activeProblems = countDistinctExact(display_id),
-                categories = collectDistinct(event.category), by:{apmid}
-    | fieldsAdd hasAvailability = contains(toString(categories), "AVAILABILITY")
-  ], sourceField: apmid, lookupField: apmid, prefix: "p."
-// defaults
-| fieldsAdd appName        = coalesce(n.nsName, hn.hostName, apmid),
-            namespaces     = coalesce(n.namespaces, 0),
-            hostsTotal     = coalesce(ht.hostsTotal, 0),
-            hostsUp        = coalesce(hu.hostsUp, 0),
-            services       = coalesce(s.services, 0),
-            requests       = coalesce(s.requests, 0),
-            failRatePct    = coalesce(s.failRatePct, 0.0),
-            restarts1h     = coalesce(k.restarts1h, 0),
-            activeProblems = coalesce(p.activeProblems, 0),
-            hasAvailability = coalesce(p.hasAvailability, false),
-            categories     = p.categories
-// health state
-| fieldsAdd health = if(hasAvailability
-                        or (failRatePct >= 10 and requests >= 100)
-                        or (hostsTotal > 0 and hostsUp == 0), "🔴 Critical",
-                     else: if(activeProblems > 0 or failRatePct >= 2
-                        or hostsUp < hostsTotal or restarts1h >= 20, "🟠 Degraded",
-                     else: if(services == 0 and namespaces == 0, "⚪ Unknown",
-                     else: "🟢 Healthy")))
-| fieldsAdd rank = if(contains(health, "Critical"), 1, else: if(contains(health, "Degraded"), 2,
-                   else: if(contains(health, "Unknown"), 3, else: 4)))
-| sort rank asc, activeProblems desc, failRatePct desc
-| fields health, appName, apmid, hostsUp, hostsTotal, services, failRatePct,
-         namespaces, restarts1h, activeProblems, categories
+    | summarize hostProblems = countDistinctExact(display_id),
+                hostProblemNames = collectDistinct(event.name),
+                by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "hp."
+| fieldsAdd hostsKnown   = coalesce(h.hostsKnown, 0),
+            hostsUp      = coalesce(h.hostsUp, 0),
+            hostProblems = coalesce(hp.hostProblems, 0)
+| fieldsAdd hostHealth = if(hostsKnown == 0, "N/A",
+                         else: if(hostsUp < hostsKnown or hostProblems > 0, "🔴 Critical",
+                         else: "🟢 Healthy"))
+| fieldsAdd hostReason = if(hostsUp < hostsKnown and hostProblems > 0, "Host down + Davis problem",
+                         else: if(hostsUp < hostsKnown, "Host down",
+                         else: if(hostProblems > 0, "Davis problem on host", else: "-")))
+| fields hostHealth, apmid, hostsUp, hostsKnown, hostProblems, hostReason, h.downHosts, hp.hostProblemNames
+| sort hostHealth asc
