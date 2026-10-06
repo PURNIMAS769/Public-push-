@@ -1,67 +1,41 @@
-Step 1: Find the mismatch (run this first)
-timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
-| filter startsWith(k8s.namespace.name, "app")
-| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
-| filter in(apmid, array($ClaimsApps))
-| summarize by:{nodeName = k8s.node.name}
-| lookup [
-    timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-30m
-    | filter node_condition == "Ready" and lower(condition_status) == "true"
-    | fieldsAdd nodeName = k8s.node.name, readyVal = arrayMax(c)
-    | fields nodeName, readyVal
-  ], sourceField: nodeName, lookupField: nodeName, prefix: "r."
-| fields nodeName, r.readyVal
-| limit 20
+M1: What dimensions do the MQ metrics have?
+fetch metric.series, from:-2h
+| filter metric.key == "ibmmq.queue_manager.availability" or metric.key == "ibmmq.queue.depth"
+| limit 10
 
-If r.readyVal = 1: the renamed join field was the problem. Go to Step 2.
-If it's null: the Ready metric isn't reporting the arod08-… nodes (your Ready screenshot only showed aks/arod01/arod03 at the top). Run the Ready query with | filter contains(k8s.node.name, "arod08") and send me the result.
-Step 2: Corrected tile
-data record(apmid = array($ClaimsApps))
-| expand apmid
-// app → nodes
-| lookup [
-    timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
-    | filter startsWith(k8s.namespace.name, "app")
-    | fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
-    | summarize nodes = collectDistinct(k8s.node.name), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "m."
-| expand nodeName = m.nodes
-// Ready status: seen in last 24h, ready in last 15m
-| lookup [
-    timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-24h, interval:5m
-    | filter node_condition == "Ready" and lower(condition_status) == "true"
-    | fieldsAdd nodeName = k8s.node.name,
-                recentMax = arrayMax(arraySlice(c, from:-3))
-    | fieldsAdd notReady = isNull(recentMax) or recentMax < 1
-    | fields nodeName, notReady
-  ], sourceField: nodeName, lookupField: nodeName, prefix: "r."
-// node ID → name, then active problems by ID
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | sort timestamp desc
-    | dedup display_id
-    | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | expand nodeId = affected_entity_ids
-    | filter startsWith(nodeId, "KUBERNETES_NODE-")
-    | lookup [ fetch dt.entity.kubernetes_node | fields id, nName = entity.name ],
-             sourceField: nodeId, lookupField: id, prefix: "e."
-    | summarize nodeProblems = countDistinctExact(display_id),
-                problemName = takeFirst(event.name), by:{nodeName = e.nName}
-  ], sourceField: nodeName, lookupField: nodeName, prefix: "p."
-| fieldsAdd notReady   = coalesce(r.notReady, false),
-            hasProblem = coalesce(p.nodeProblems, 0) > 0
-| summarize nodesTotal    = countDistinctExact(nodeName),
-            nodesNotReady = countDistinctExact(if(notReady, nodeName)),
-            nodesWithProb = countDistinctExact(if(hasProblem, nodeName)),
-            badNodes      = arrayRemoveNulls(collectDistinct(if(notReady or hasProblem, nodeName))),
-            problems      = arrayRemoveNulls(collectDistinct(p.problemName)),
-            by:{apmid}
-| fieldsAdd nodeHealth = if(nodesTotal == 0, "N/A",
-                         else: if(nodesNotReady > 0 or nodesWithProb > 0, "🔴 Critical",
-                         else: "🟢 Healthy"))
-| fieldsAdd nodeReason = if(nodesNotReady > 0 and nodesWithProb > 0, "Node not ready + Davis problem",
-                         else: if(nodesNotReady > 0, "Node down / not ready",
-                         else: if(nodesWithProb > 0, "Davis problem on node", else: "-")))
-| fieldsAdd rank = if(contains(nodeHealth, "Critical"), 1, else: if(contains(nodeHealth, "Healthy"), 2, else: 3))
-| sort rank asc, apmid asc
-| fields nodeHealth, apmid, nodesTotal, nodesNotReady, nodesWithProb, nodeReason, badNodes, problems
+
+Check: expand one record and look at the dimension list. We're looking for queue_manager, queue_name, a dt.entity.* ID, a host, or (best case) anything that carries an APMID or app name.
+
+M2: Do queue manager entities carry app tags?
+fetch `dt.entity.ibmmq:queue_manager`
+| fields id, name = entity.name, tags
+| limit 30
+
+
+If you get an error that the entity type doesn't exist, run this to find the correct name:
+
+fetch dt.system.data_objects
+| filter contains(lower(name), "mq")
+| fields name
+
+
+Check: whether any queue manager has APMID: / Portfolio:Claims tags for a Claims app, rather than only APP00005707.
+
+M3: Do queue names identify the app?
+timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-30m
+| fields queue_manager, queue_name
+| filter not(startsWith(queue_name, "SYSTEM."))
+| sort queue_manager asc, queue_name asc
+| limit 200
+
+
+Check: whether queue names contain an APMID or app name (e.g. CLAIMS.ORCH.REQ, APP00236568.IN), or whether each queue manager is dedicated to one app (e.g. a QM name containing CLM/BCBD).
+
+M4: How do MQ problems look in Davis?
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter contains(lower(event.name), "mq") or contains(toString(affected_entity_types), "ibmmq")
+| fields display_id, event.status, event.name, affected_entity_ids,
+         affected_entity_types, entity_tags
+| limit 20
