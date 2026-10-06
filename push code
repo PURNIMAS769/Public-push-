@@ -1,42 +1,54 @@
-V1 — Do problem tags carry Portfolio?
+Run these 3 checks
 
-fetch dt.davis.problems, from:-7d
-| fieldsAdd tagStr = toString(entity_tags)
-| summarize total        = countDistinctExact(display_id),
-            withClaims   = countDistinctExact(if(contains(lower(tagStr), "portfolio:claims"), display_id)),
-            withApmid    = countDistinctExact(if(contains(tagStr, "APMID:"), display_id))x
-
-
-Tile 1.4 — Active Claims problems (single value)
+C1: What caused the Oct 6 spike?
 
 fetch dt.davis.problems, from:-7d
 | sort timestamp desc
 | dedup display_id
-| filter event.status == "ACTIVE"
 | filter dt.davis.is_duplicate == false
 | filter contains(lower(toString(entity_tags)), "portfolio:claims")
-| summarize activeProblems = countDistinctExact(display_id)
+| filter event.category == "AVAILABILITY"
+| summarize problems = countDistinctExact(display_id),
+            apps = countDistinctExact(toString(entity_tags)),
+            by:{event.name, dt.davis.impact_level}
+| sort problems desc
 
 
-Tile 1.5 — Applications with active problems (single value)
+If most of these are Http monitor global outage with impact Synthetic, the spike is synthetic noise. In that case Tile 1.6 should split Synthetic problems from real application problems, or leave them out.
+
+C2: Claims problems missed by the portfolio filter
 
 fetch dt.davis.problems, from:-7d
 | sort timestamp desc
 | dedup display_id
-| filter event.status == "ACTIVE"
 | filter dt.davis.is_duplicate == false
-| filter contains(lower(toString(entity_tags)), "portfolio:claims")
+| filter not(contains(lower(toString(entity_tags)), "portfolio:claims"))
 | expand tag = entity_tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| summarize appsImpacted = countDistinctExact(apmid)
+| lookup [
+    fetch dt.entity.host
+    | fields id, tags, tagStr = toString(tags)
+    | filter contains(lower(tagStr), "portfolio:claims")
+    | expand tag = tags
+    | filter contains(tag, "APMID:") or contains(tag, "APPID:")
+    | fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
+                        else: splitString(tag, "APPID:")[1])
+    | filter startsWith(apmid, "APP")
+    | summarize hosts = countDistinctExact(id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "c."
+| filter isNotNull(c.hosts)
+| summarize missed = countDistinctExact(display_id), by:{apmid}
+| sort missed desc
 
 
-Tile 1.6 — New Claims problems by category, last 7 days (stacked bar)
+If this returns a meaningful number, Tiles 1.4–1.6 should match on Claims APMIDs instead of the portfolio tag. If it returns zero or close to zero, we keep the simpler portfolio filter.
 
-fetch dt.davis.problems, from:-7d
+C3: Corrected Tile 1.6 (uses the dashboard time picker, daily bars)
+
+fetch dt.davis.problems
 | sort timestamp desc
 | dedup display_id
 | filter dt.davis.is_duplicate == false
 | filter contains(lower(toString(entity_tags)), "portfolio:claims")
-| makeTimeseries problems = count(), by:{event.category}, time:event.start, interval:6h
+| makeTimeseries problems = count(), by:{event.category}, time:event.start, interval:1d
