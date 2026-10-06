@@ -1,28 +1,28 @@
-look over the host-only apps for anything that isn't a Claims app.
+Check the 9 host-only apps
 
-fetch dt.entity.cloud_application_namespace
-| fields tags
-| filter contains(lower(toString(tags)), "portfolio:claims")
+Run the same query with the last line replaced:
+
+| filter source == "claims-host"
+| fields apmid
+| sort apmid asc
+
+
+If you add the host names, it's easier to tell what each app is:
+
+fetch dt.entity.host
+| fields id, name = entity.name, tags
 | expand tag = tags
-| filter contains(tag, "APMID:")
-| fields apmid = splitString(tag, "APMID:")[1], src = "namespace"
-| append [
-    fetch dt.entity.host
-    | fields id, tags
-    | expand tag = tags
-    | fieldsAdd lt = lower(tag)
-    | summarize claimVals = countDistinctExact(if(contains(lt, "portfolio:claims"), tag)),
-                otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:claims")), tag)),
-                apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
-                by:{id}
-    | filter claimVals > 0 and otherVals == 0
-    | expand apmid = apmids
-    | fields apmid, src = "claims-host"
-  ]
-| filter isNotNull(apmid) and startsWith(apmid, "APP")
-| summarize sources = collectDistinct(src), by:{apmid}
-| fieldsAdd source = if(arraySize(sources) == 2, "both", else: sources[0])
-| summarize apps = count(), by:{source}
+| fieldsAdd lt = lower(tag)
+| summarize claimVals = countDistinctExact(if(contains(lt, "portfolio:claims"), tag)),
+            otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:claims")), tag)),
+            apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
+            appNames  = collectDistinct(if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1])),
+            by:{id, name}
+| filter claimVals > 0 and otherVals == 0
+| expand apmid = apmids
+| filter isNotNull(apmid)
+| summarize hosts = count(), hostNames = collectDistinct(name), appNames = collectDistinct(appNames), by:{apmid}
+| sort apmid asc
 
 
-I'd expect about 52
+The result list
