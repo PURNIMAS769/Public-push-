@@ -1,9 +1,11 @@
+look over the host-only apps for anything that isn't a Claims app.
+
 fetch dt.entity.cloud_application_namespace
 | fields tags
 | filter contains(lower(toString(tags)), "portfolio:claims")
 | expand tag = tags
 | filter contains(tag, "APMID:")
-| fields apmid = splitString(tag, "APMID:")[1]
+| fields apmid = splitString(tag, "APMID:")[1], src = "namespace"
 | append [
     fetch dt.entity.host
     | fields id, tags
@@ -15,11 +17,12 @@ fetch dt.entity.cloud_application_namespace
                 by:{id}
     | filter claimVals > 0 and otherVals == 0
     | expand apmid = apmids
-    | fields apmid
+    | fields apmid, src = "claims-host"
   ]
 | filter isNotNull(apmid) and startsWith(apmid, "APP")
-| dedup apmid
-| sort apmid asc
+| summarize sources = collectDistinct(src), by:{apmid}
+| fieldsAdd source = if(arraySize(sources) == 2, "both", else: sources[0])
+| summarize apps = count(), by:{source}
 
 
-First, run
+I'd expect about 52
