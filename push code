@@ -1,26 +1,105 @@
-fetch dt.entity.cloud_application_namespace
-| fields tags
-| filter contains(lower(toString(tags)), "portfolio:claims")
-| expand tag = tags
-| filter contains(tag, "APMID:")
-| fields apmid = splitString(tag, "APMID:")[1]
-| append [
+Here are all six Section 1 tiles. Each one is filtered by $ClaimsApps, so the whole section changes when you pick apps in the variable.
+
+Tile 1.1: Applications in Claims portfolio
+
+Visual: Single value
+
+data record(apmid = array($ClaimsApps))
+| fields apps = arraySize(apmid)
+
+
+Expected: 59 when all apps are selected. If data record fails with the variable, use the variable query itself and replace its last line with | summarize apps = countDistinctExact(apmid).
+
+Tile 1.2: Monitoring coverage quality
+
+Visual: Donut (or bar)
+
+data record(apmid = array($ClaimsApps))
+| expand apmid
+| lookup [
     fetch dt.entity.host
     | fields id, tags
     | expand tag = tags
-    | fieldsAdd lt = lower(tag)
-    | summarize claimVals = countDistinctExact(if(contains(lt, "portfolio:claims"), tag)),
-                otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:claims")), tag)),
-                apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
-                by:{id}
-    | filter claimVals > 0 and otherVals == 0
-    | expand apmid = apmids
-    | fields apmid
-  ]
-| filter isNotNull(apmid) and matchesPattern(apmid, "'APP' DIGIT{8}")
-| filter not(in(apmid, array("APP00005655", "APP02107205")))
-| dedup apmid
-| sort apmid asc
+    | filter contains(tag, "APMID:")
+    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
+    | summarize hosts = countDistinctExact(id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "h."
+| lookup [
+    fetch dt.entity.service
+    | fields id, tags
+    | expand tag = tags
+    | filter contains(tag, "APMID:")
+    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
+    | summarize services = countDistinctExact(id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "s."
+| fieldsAdd hosts = coalesce(h.hosts, 0), services = coalesce(s.services, 0)
+| fieldsAdd coverage = if(services >= 5, "Full stack",
+                       else: if(services > 0, "Thin (1-4 services)",
+                       else: if(hosts > 0, "Host only - no app visibility",
+                       else: "No monitoring data")))
+| summarize apps = count(), by:{coverage}
 
 
-Exp
+Expected: the four counts add up to 59. These numbers will be different from the earlier 56/14/119 because that split covered all 189 APMIDs.
+
+Tile 1.3: Claims hosts, exclusive vs shared
+
+Visual: Bar, or two single values
+
+fetch dt.entity.host
+| fields id, tags
+| expand tag = tags
+| fieldsAdd lt = lower(tag)
+| summarize claimVals = countDistinctExact(if(contains(lt, "portfolio:claims"), tag)),
+            otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:claims")), tag)),
+            apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
+            by:{id}
+| expand apmid = apmids
+| filter in(apmid, array($ClaimsApps))
+| dedup id
+| fieldsAdd hostType = if(claimVals > 0 and otherVals == 0, "Claims-exclusive",
+                       else: "Shared with other portfolios")
+| summarize hosts = count(), by:{hostType}
+
+Tile 1.4: Active Claims problems
+
+Visual: Single value. Thresholds: 0 = green, 1 or more = red.
+
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| expand tag = entity_tags
+| filter contains(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| summarize activeProblems = countDistinctExact(display_id)
+
+Tile 1.5: Applications with active problems
+
+Visual: Single value
+
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| expand tag = entity_tags
+| filter contains(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| summarize appsImpacted = countDistinctExact(apmid)
+
+Tile 1.6: Claims problem trend by impact level
+
+Visual: Bar chart, stacked. Tile timeframe: Last 7 days (set this in the tile settings, not in the query).
+
+fetch dt.davis.problems
+| sort timestamp desc
+| dedup display_id
+| filter dt.davis.is_duplicate == false
+| expand tag = entity_tags
+| filter contains(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| dedup display_id
+| makeTimeseries problems = count(), by:{dt.davis.impact_level}, time:event.start, interval:1d
