@@ -1,4 +1,4 @@
-M5: Validate the map (run this first)
+M6: Check that queues map to queue managers
 fetch dt.davis.problems, from:-90d
 | sort timestamp desc
 | dedup display_id
@@ -6,13 +6,16 @@ fetch dt.davis.problems, from:-90d
 | fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
 | filter in(apmid, array($ClaimsApps))
 | expand eid = affected_entity_ids
-| lookup [ fetch `dt.entity.ibmmq:queue_manager` | fields id, qmName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "qm."
 | lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
          sourceField: eid, lookupField: id, prefix: "lq."
-| summarize alerts = countDistinctExact(display_id),
-            entityTypes = collectDistinct(affected_entity_types),
-            qms = arrayRemoveNulls(collectDistinct(qm.qmName)),
-            queues = arrayRemoveNulls(collectDistinct(lq.qName)),
+| filter isNotNull(lq.qName)
+| summarize by:{apmid, queueName = lq.qName}
+| lookup [
+    timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
+    | summarize qms = collectDistinct(queue_manager), by:{queue_name}
+  ], sourceField: queueName, lookupField: queue_name, prefix: "m."
+| summarize queues = countDistinctExact(queueName),
+            mappedQueues = countDistinctExact(if(isNotNull(m.qms), queueName)),
+            qms = arrayRemoveNulls(collectDistinct(m.qms)),
             by:{apmid}
-| sort alerts desc
+| sort apmid asc
