@@ -1,36 +1,68 @@
-fetch dt.davis.problems, from:-30d
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| dedup display_id, sort:{timestamp desc}
-| expand affected_entity_ids
-| filter startsWith(affected_entity_ids, "HOST-")
+Q1 — Tile 1.4: Coverage quality (hosts vs services per app)
+
+The earlier A4 query showed that service tags are an array, just like host tags. So this version uses expand tags directly instead of the splitString workaround I gave you before.
+
+fetch dt.entity.host
+| fields id, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "portfolio:claims")
+| expand tag = tags
+| filter contains(tag, "APMID:") or contains(tag, "APPID:")
+| fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
+                    else: splitString(tag, "APPID:")[1])
+| filter startsWith(apmid, "APP")
+| summarize hosts = countDistinctExact(id), by:{apmid}
 | lookup [
-    fetch dt.entity.host
-    | fieldsAdd os = osType, mq = if(matchesValue(tags, "IBM MQ"), "yes", else:"no")
-    | fields id, os, mq
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host."
-| fieldsAdd os_group = if(host.os == "ZOS", "Mainframe",
-            else: if(host.mq == "yes" and in(host.os, "AIX", "LINUX", "WINDOWS"),
-            host.os, else:"other"))
-| filter isNotNull(host.os) and os_group != "other"
-| dedup display_id
-| summarize active_alerts = count(), by:{category = event.category}
-| sort active_alerts desc
+    fetch dt.entity.service
+    | fields id, tags
+    | expand tag = tags
+    | filter contains(tag, "APMID:") or contains(tag, "APPID:")
+    | fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
+                        else: splitString(tag, "APPID:")[1])
+    | filter startsWith(apmid, "APP")
+    | summarize services = countDistinctExact(id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "s."
+| fieldsAdd services = coalesce(s.services, 0)
+| fieldsAdd coverage = if(services >= 5, "Full stack",
+                       else: if(services > 0, "Thin",
+                       else: "Host only - no app visibility"))
+| summarize apps = count(), by:{coverage}
 
 
+What to check: the three counts should add up to 187. Before the final summarize, you can also add | sort services desc and remove the last line to see the per-app rows.
 
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate)
-| dedup display_id, sort:{timestamp desc}
-| expand affected_entity_ids
-| filter startsWith(affected_entity_ids, "HOST-")
-| lookup [
-    fetch dt.entity.host
-    | fieldsAdd os = osType, mq = if(matchesValue(tags, "IBM MQ"), "yes", else:"no")
-    | fields id, os, mq
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"host."
-| fieldsAdd os_group = if(host.os == "ZOS", "Mainframe",
-            else: if(host.mq == "yes" and in(host.os, "AIX", "LINUX", "WINDOWS"),
-            host.os, else:"other"))
-| filter isNotNull(host.os) and os_group != "other"
-| dedup display_id
-| makeTimeseries alerts = count(), by:{event.status}, time:event.start, interval:1h
+Q2 — Davis problems: confirm the field names (unscoped)
+fetch dt.davis.problems, from:-7d
+| limit 5
+
+
+What to check: open one record and share the field list. I need the exact names for status, severity/category, problem ID and affected entities. The affected-entities field is what we use to link problems to Claims hosts and services.
+
+Q3 — Davis problems: active count (unscoped)
+fetch dt.davis.problems, from:-24h
+| filter event.status == "ACTIVE"
+| summarize problems = countDistinctExact(display_id), by:{event.category}
+
+
+If you get an error or zero records, Q2 will show the correct field names and I'll fix this query.
+
+Q4 — Network metrics available
+fetch metric.series, from:-2h
+| summarize series = count(), by:{metric.key}
+| filter contains(metric.key, "net") or contains(metric.key, "nic")
+   or contains(metric.key, "tcp") or contains(metric.key, "retrans")
+   or contains(metric.key, "packet")
+| sort series desc
+
+Q5 — OpenShift / Kubernetes presence for Claims
+fetch dt.entity.cloud_application_namespace
+| fields id, name = entity.name, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "claim") or contains(tagStr, "APMID:") or contains(tagStr, "APPID:")
+| fields id, name, tagStr
+| limit 100
+
+
+If this returns no records, run this one so we can see how namespaces are named and tagged:
+
+fetch dt.entity.cloud_application_namespace
+| fields id, name = entity.name, tags
+| limit 50
