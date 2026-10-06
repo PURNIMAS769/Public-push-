@@ -1,41 +1,18 @@
-M1: What dimensions do the MQ metrics have?
-fetch metric.series, from:-2h
-| filter metric.key == "ibmmq.queue_manager.availability" or metric.key == "ibmmq.queue.depth"
-| limit 10
-
-
-Check: expand one record and look at the dimension list. We're looking for queue_manager, queue_name, a dt.entity.* ID, a host, or (best case) anything that carries an APMID or app name.
-
-M2: Do queue manager entities carry app tags?
-fetch `dt.entity.ibmmq:queue_manager`
-| fields id, name = entity.name, tags
-| limit 30
-
-
-If you get an error that the entity type doesn't exist, run this to find the correct name:
-
-fetch dt.system.data_objects
-| filter contains(lower(name), "mq")
-| fields name
-
-
-Check: whether any queue manager has APMID: / Portfolio:Claims tags for a Claims app, rather than only APP00005707.
-
-M3: Do queue names identify the app?
-timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-30m
-| fields queue_manager, queue_name
-| filter not(startsWith(queue_name, "SYSTEM."))
-| sort queue_manager asc, queue_name asc
-| limit 200
-
-
-Check: whether queue names contain an APMID or app name (e.g. CLAIMS.ORCH.REQ, APP00236568.IN), or whether each queue manager is dedicated to one app (e.g. a QM name containing CLM/BCBD).
-
-M4: How do MQ problems look in Davis?
-fetch dt.davis.problems, from:-30d
+M5: Validate the map (run this first)
+fetch dt.davis.problems, from:-90d
 | sort timestamp desc
 | dedup display_id
-| filter contains(lower(event.name), "mq") or contains(toString(affected_entity_types), "ibmmq")
-| fields display_id, event.status, event.name, affected_entity_ids,
-         affected_entity_types, entity_tags
-| limit 20
+| filter contains(event.name, "IBMMQ_APP")
+| fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
+| filter in(apmid, array($ClaimsApps))
+| expand eid = affected_entity_ids
+| lookup [ fetch `dt.entity.ibmmq:queue_manager` | fields id, qmName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "qm."
+| lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "lq."
+| summarize alerts = countDistinctExact(display_id),
+            entityTypes = collectDistinct(affected_entity_types),
+            qms = arrayRemoveNulls(collectDistinct(qm.qmName)),
+            queues = arrayRemoveNulls(collectDistinct(lq.qName)),
+            by:{apmid}
+| sort alerts desc
