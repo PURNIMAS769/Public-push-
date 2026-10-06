@@ -1,68 +1,42 @@
-Q1 — Tile 1.4: Coverage quality (hosts vs services per app)
+V1 — Do problem tags carry Portfolio?
 
-The earlier A4 query showed that service tags are an array, just like host tags. So this version uses expand tags directly instead of the splitString workaround I gave you before.
-
-fetch dt.entity.host
-| fields id, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "portfolio:claims")
-| expand tag = tags
-| filter contains(tag, "APMID:") or contains(tag, "APPID:")
-| fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                    else: splitString(tag, "APPID:")[1])
-| filter startsWith(apmid, "APP")
-| summarize hosts = countDistinctExact(id), by:{apmid}
-| lookup [
-    fetch dt.entity.service
-    | fields id, tags
-    | expand tag = tags
-    | filter contains(tag, "APMID:") or contains(tag, "APPID:")
-    | fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                        else: splitString(tag, "APPID:")[1])
-    | filter startsWith(apmid, "APP")
-    | summarize services = countDistinctExact(id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "s."
-| fieldsAdd services = coalesce(s.services, 0)
-| fieldsAdd coverage = if(services >= 5, "Full stack",
-                       else: if(services > 0, "Thin",
-                       else: "Host only - no app visibility"))
-| summarize apps = count(), by:{coverage}
-
-
-What to check: the three counts should add up to 187. Before the final summarize, you can also add | sort services desc and remove the last line to see the per-app rows.
-
-Q2 — Davis problems: confirm the field names (unscoped)
 fetch dt.davis.problems, from:-7d
-| limit 5
+| fieldsAdd tagStr = toString(entity_tags)
+| summarize total        = countDistinctExact(display_id),
+            withClaims   = countDistinctExact(if(contains(lower(tagStr), "portfolio:claims"), display_id)),
+            withApmid    = countDistinctExact(if(contains(tagStr, "APMID:"), display_id))x
 
 
-What to check: open one record and share the field list. I need the exact names for status, severity/category, problem ID and affected entities. The affected-entities field is what we use to link problems to Claims hosts and services.
+Tile 1.4 — Active Claims problems (single value)
 
-Q3 — Davis problems: active count (unscoped)
-fetch dt.davis.problems, from:-24h
+fetch dt.davis.problems, from:-7d
+| sort timestamp desc
+| dedup display_id
 | filter event.status == "ACTIVE"
-| summarize problems = countDistinctExact(display_id), by:{event.category}
+| filter dt.davis.is_duplicate == false
+| filter contains(lower(toString(entity_tags)), "portfolio:claims")
+| summarize activeProblems = countDistinctExact(display_id)
 
 
-If you get an error or zero records, Q2 will show the correct field names and I'll fix this query.
+Tile 1.5 — Applications with active problems (single value)
 
-Q4 — Network metrics available
-fetch metric.series, from:-2h
-| summarize series = count(), by:{metric.key}
-| filter contains(metric.key, "net") or contains(metric.key, "nic")
-   or contains(metric.key, "tcp") or contains(metric.key, "retrans")
-   or contains(metric.key, "packet")
-| sort series desc
-
-Q5 — OpenShift / Kubernetes presence for Claims
-fetch dt.entity.cloud_application_namespace
-| fields id, name = entity.name, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "claim") or contains(tagStr, "APMID:") or contains(tagStr, "APPID:")
-| fields id, name, tagStr
-| limit 100
+fetch dt.davis.problems, from:-7d
+| sort timestamp desc
+| dedup display_id
+| filter event.status == "ACTIVE"
+| filter dt.davis.is_duplicate == false
+| filter contains(lower(toString(entity_tags)), "portfolio:claims")
+| expand tag = entity_tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| summarize appsImpacted = countDistinctExact(apmid)
 
 
-If this returns no records, run this one so we can see how namespaces are named and tagged:
+Tile 1.6 — New Claims problems by category, last 7 days (stacked bar)
 
-fetch dt.entity.cloud_application_namespace
-| fields id, name = entity.name, tags
-| limit 50
+fetch dt.davis.problems, from:-7d
+| sort timestamp desc
+| dedup display_id
+| filter dt.davis.is_duplicate == false
+| filter contains(lower(toString(entity_tags)), "portfolio:claims")
+| makeTimeseries problems = count(), by:{event.category}, time:event.start, interval:6h
