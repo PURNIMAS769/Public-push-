@@ -1,15 +1,35 @@
-you select in the dashboard filter drives it:
+D1: Do container metrics carry the node name?
+timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
+| filter startsWith(k8s.namespace.name, "app")
+| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
+| filter in(apmid, array($ClaimsApps))
+| summarize nodes = collectDistinct(k8s.node.name), by:{apmid}
+| fieldsAdd nodeCount = arraySize(nodes)
 
+
+Check: each app has 1 or more node names. If k8s.node.name comes back null or errors, run this and send me the dimension names:
+
+timeseries cpu = avg(dt.kubernetes.container.cpu_usage), from:-30m, by:{k8s.namespace.name}
+| limit 1
+
+
+I'll switch to another metric or the pod entity.
+
+D2: Node Ready condition
+timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-30m
+| filter node_condition == "Ready"
+| fieldsAdd last = arrayLast(c)
+| fields k8s.node.name, node_condition, condition_status, last
+| sort condition_status asc
+
+
+Check: what values condition_status has (true / false / unknown). A node is healthy when Ready = true with a value > 0. If the dimension names differ, send me the error.
+
+D3: How node problems appear in Davis
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
 | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| expand tag = entity_tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| dedup display_id
-| fields apmid, display_id, event.name, event.category, dt.davis.impact_level,
-         event.start, affected_entity_types, affected_entity_ids,
-         affected_entity_names, root_cause_entity_id, root_cause_entity_name
-| sort apmid asc, event.start desc
+| expand eid = affected_entity_ids
+| filter startsWith(eid, "KUBERNETES_NODE-")
+| fields display_id, event.name, eid, affected_entity_names
