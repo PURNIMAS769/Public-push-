@@ -1,22 +1,6 @@
-Run these 3 checks
+Run these two
 
-C1: What caused the Oct 6 spike?
-
-fetch dt.davis.problems, from:-7d
-| sort timestamp desc
-| dedup display_id
-| filter dt.davis.is_duplicate == false
-| filter contains(lower(toString(entity_tags)), "portfolio:claims")
-| filter event.category == "AVAILABILITY"
-| summarize problems = countDistinctExact(display_id),
-            apps = countDistinctExact(toString(entity_tags)),
-            by:{event.name, dt.davis.impact_level}
-| sort problems desc
-
-
-If most of these are Http monitor global outage with impact Synthetic, the spike is synthetic noise. In that case Tile 1.6 should split Synthetic problems from real application problems, or leave them out.
-
-C2: Claims problems missed by the portfolio filter
+D1: Names of the APMIDs C2 flagged (problems with exactly one APMID, so the name pairing is unambiguous)
 
 fetch dt.davis.problems, from:-7d
 | sort timestamp desc
@@ -24,31 +8,40 @@ fetch dt.davis.problems, from:-7d
 | filter dt.davis.is_duplicate == false
 | filter not(contains(lower(toString(entity_tags)), "portfolio:claims"))
 | expand tag = entity_tags
+| filter startsWith(tag, "APMID:") or startsWith(tag, "APPName:")
+| fieldsAdd apmid   = if(startsWith(tag, "APMID:"),   splitString(tag, "APMID:")[1]),
+            appName = if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1])
+| summarize apmids = collectDistinct(apmid), names = collectDistinct(appName), by:{display_id}
+| filter arraySize(apmids) == 1
+| fieldsAdd apmid = apmids[0]
+| summarize problems = count(), appName = takeAny(names), by:{apmid}
+| sort problems desc
+| limit 50
+
+
+This shows which of the flagged apps are Claims and which are platforms. If collectDistinct keeps nulls or takeAny errors, send me the error and I'll adjust it.
+
+D2: Claims container apps (APMIDs from namespaces)
+
+fetch dt.entity.cloud_application_namespace
+| fields id, name = entity.name, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "portfolio:claims")
+| expand tag = tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| lookup [
-    fetch dt.entity.host
-    | fields id, tags, tagStr = toString(tags)
-    | filter contains(lower(tagStr), "portfolio:claims")
-    | expand tag = tags
-    | filter contains(tag, "APMID:") or contains(tag, "APPID:")
-    | fieldsAdd apmid = if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                        else: splitString(tag, "APPID:")[1])
-    | filter startsWith(apmid, "APP")
-    | summarize hosts = countDistinctExact(id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "c."
-| filter isNotNull(c.hosts)
-| summarize missed = countDistinctExact(display_id), by:{apmid}
-| sort missed desc
+| summarize namespaces = countDistinctExact(id), nsNames = collectDistinct(name), by:{apmid}
+| sort namespaces desc
 
 
-If this returns a meaningful number, Tiles 1.4–1.6 should match on Claims APMIDs instead of the portfolio tag. If it returns zero or close to zero, we keep the simpler portfolio filter.
+I expect the APP00236xxx apps here. Any APMID in this list is a Claims app, whether or not it shows up on Claims hosts.
 
-C3: Corrected Tile 1.6 (uses the dashboard time picker, daily bars)
+Tile 1.6 adjustment (use now)
+
+Split the trend by impact level instead of category, so synthetic noise is visibly separate:
 
 fetch dt.davis.problems
 | sort timestamp desc
 | dedup display_id
 | filter dt.davis.is_duplicate == false
 | filter contains(lower(toString(entity_tags)), "portfolio:claims")
-| makeTimeseries problems = count(), by:{event.category}, time:event.start, interval:1d
+| makeTimeseries problems = count(), by:{dt.davis.impact_level}, time:event.start, interval:1d
