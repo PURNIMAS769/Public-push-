@@ -1,47 +1,25 @@
-Run these two
-
-D1: Names of the APMIDs C2 flagged (problems with exactly one APMID, so the name pairing is unambiguous)
-
-fetch dt.davis.problems, from:-7d
-| sort timestamp desc
-| dedup display_id
-| filter dt.davis.is_duplicate == false
-| filter not(contains(lower(toString(entity_tags)), "portfolio:claims"))
-| expand tag = entity_tags
-| filter startsWith(tag, "APMID:") or startsWith(tag, "APPName:")
-| fieldsAdd apmid   = if(startsWith(tag, "APMID:"),   splitString(tag, "APMID:")[1]),
-            appName = if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1])
-| summarize apmids = collectDistinct(apmid), names = collectDistinct(appName), by:{display_id}
-| filter arraySize(apmids) == 1
-| fieldsAdd apmid = apmids[0]
-| summarize problems = count(), appName = takeAny(names), by:{apmid}
-| sort problems desc
-| limit 50
-
-
-This shows which of the flagged apps are Claims and which are platforms. If collectDistinct keeps nulls or takeAny errors, send me the error and I'll adjust it.
-
-D2: Claims container apps (APMIDs from namespaces)
-
 fetch dt.entity.cloud_application_namespace
-| fields id, name = entity.name, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "portfolio:claims")
+| fields tags
+| filter contains(lower(toString(tags)), "portfolio:claims")
 | expand tag = tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| summarize namespaces = countDistinctExact(id), nsNames = collectDistinct(name), by:{apmid}
-| sort namespaces desc
+| filter contains(tag, "APMID:")
+| fields apmid = splitString(tag, "APMID:")[1]
+| append [
+    fetch dt.entity.host
+    | fields id, tags
+    | expand tag = tags
+    | fieldsAdd lt = lower(tag)
+    | summarize claimVals = countDistinctExact(if(contains(lt, "portfolio:claims"), tag)),
+                otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:claims")), tag)),
+                apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
+                by:{id}
+    | filter claimVals > 0 and otherVals == 0
+    | expand apmid = apmids
+    | fields apmid
+  ]
+| filter isNotNull(apmid) and startsWith(apmid, "APP")
+| dedup apmid
+| sort apmid asc
 
 
-I expect the APP00236xxx apps here. Any APMID in this list is a Claims app, whether or not it shows up on Claims hosts.
-
-Tile 1.6 adjustment (use now)
-
-Split the trend by impact level instead of category, so synthetic noise is visibly separate:
-
-fetch dt.davis.problems
-| sort timestamp desc
-| dedup display_id
-| filter dt.davis.is_duplicate == false
-| filter contains(lower(toString(entity_tags)), "portfolio:claims")
-| makeTimeseries problems = count(), by:{dt.davis.impact_level}, time:event.start, interval:1d
+First, run
