@@ -1,45 +1,15 @@
-Step 1: Test it on its own (run in a Notebook first)
-data record(apmid = array($ClaimsApps))
-| expand apmid
-// hosts that sent data in the last 24h (known) and the last 15m (up)
-| lookup [
-    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-24h
-    | fieldsAdd up = arraySize(arrayRemoveNulls(arraySlice(cpu, from:-3))) > 0
-    | lookup [ fetch dt.entity.host | fields id, tags ],
-             sourceField: dt.entity.host, lookupField: id, prefix: "e."
-    | expand tag = e.tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize hostsKnown = countDistinctExact(dt.entity.host),
-                hostsUp    = countDistinctExact(if(up, dt.entity.host)),
-                downHosts  = collectDistinct(if(not(up), dt.entity.host)),
-                by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "h."
-// active Davis problems on hosts
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | sort timestamp desc
-    | dedup display_id
-    | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | expand hostId = affected_entity_ids
-    | filter startsWith(hostId, "HOST-")
-    | lookup [ fetch dt.entity.host | fields id, tags ],
-             sourceField: hostId, lookupField: id, prefix: "e."
-    | expand tag = e.tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize hostProblems = countDistinctExact(display_id),
-                hostProblemNames = collectDistinct(event.name),
-                by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "hp."
-| fieldsAdd hostsKnown   = coalesce(h.hostsKnown, 0),
-            hostsUp      = coalesce(h.hostsUp, 0),
-            hostProblems = coalesce(hp.hostProblems, 0)
-| fieldsAdd hostHealth = if(hostsKnown == 0, "N/A",
-                         else: if(hostsUp < hostsKnown or hostProblems > 0, "🔴 Critical",
-                         else: "🟢 Healthy"))
-| fieldsAdd hostReason = if(hostsUp < hostsKnown and hostProblems > 0, "Host down + Davis problem",
-                         else: if(hostsUp < hostsKnown, "Host down",
-                         else: if(hostProblems > 0, "Davis problem on host", else: "-")))
-| fields hostHealth, apmid, hostsUp, hostsKnown, hostProblems, hostReason, h.downHosts, hp.hostProblemNames
-| sort hostHealth asc
+you select in the dashboard filter drives it:
+
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| expand tag = entity_tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| dedup display_id
+| fields apmid, display_id, event.name, event.category, dt.davis.impact_level,
+         event.start, affected_entity_types, affected_entity_ids,
+         affected_entity_names, root_cause_entity_id, root_cause_entity_name
+| sort apmid asc, event.start desc
