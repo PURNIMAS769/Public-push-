@@ -1,35 +1,61 @@
-D1: Do container metrics carry the node name?
-timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
-| filter startsWith(k8s.namespace.name, "app")
-| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
-| filter in(apmid, array($ClaimsApps))
-| summarize nodes = collectDistinct(k8s.node.name), by:{apmid}
-| fieldsAdd nodeCount = arraySize(nodes)
-
-
-Check: each app has 1 or more node names. If k8s.node.name comes back null or errors, run this and send me the dimension names:
-
-timeseries cpu = avg(dt.kubernetes.container.cpu_usage), from:-30m, by:{k8s.namespace.name}
-| limit 1
-
-
-I'll switch to another metric or the pod entity.
-
-D2: Node Ready condition
-timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-30m
-| filter node_condition == "Ready"
-| fieldsAdd last = arrayLast(c)
-| fields k8s.node.name, node_condition, condition_status, last
-| sort condition_status asc
-
-
-Check: what values condition_status has (true / false / unknown). A node is healthy when Ready = true with a value > 0. If the dimension names differ, send me the error.
-
-D3: How node problems appear in Davis
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
-| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| expand eid = affected_entity_ids
-| filter startsWith(eid, "KUBERNETES_NODE-")
-| fields display_id, event.name, eid, affected_entity_names
+| filter contains(toString(affected_entity_ids), "KUBERNETES_NODE-")
+   or contains(toString(affected_entity_types), "kubernetes_node")
+| fields display_id, event.status, event.name, affected_entity_ids,
+         affected_entity_names, affected_entity_types
+| limit 20
+
+If records come back: check that affected_entity_names holds the node name in the same format as D1 (e.g. arod08-2vn92-worker-northcentralus-e16sv5-7kjvv). If it does, the tile below works as written.
+If nothing comes back: there were no node problems in 30 days. The tile still works, and the Davis part simply stays at 0 until a node problem happens.
+Tile: OpenShift Node Health per application
+
+Visual: Table
+
+data record(apmid = array($ClaimsApps))
+| expand apmid
+// app → nodes running its pods (last 30 min)
+| lookup [
+    timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
+    | filter startsWith(k8s.namespace.name, "app")
+    | fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
+    | summarize nodes = collectDistinct(k8s.node.name), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "m."
+| expand node = m.nodes
+// node Ready status (latest value)
+| lookup [
+    timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-30m
+    | filter node_condition == "Ready" and lower(condition_status) == "true"
+    | fieldsAdd ready = coalesce(arrayLast(c), 0) > 0
+    | fields k8s.node.name, ready
+  ], sourceField: node, lookupField: k8s.node.name, prefix: "r."
+// active Davis problems on nodes
+| lookup [
+    fetch dt.davis.problems, from:-30d
+    | sort timestamp desc
+    | dedup display_id
+    | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+    | filter contains(toString(affected_entity_ids), "KUBERNETES_NODE-")
+    | expand nodeName = affected_entity_names
+    | summarize nodeProblems = countDistinctExact(display_id),
+                problemName = takeFirst(event.name), by:{nodeName}
+  ], sourceField: node, lookupField: nodeName, prefix: "p."
+| fieldsAdd notReady   = isNotNull(node) and coalesce(r.ready, false) == false,
+            hasProblem = coalesce(p.nodeProblems, 0) > 0
+| summarize nodesTotal    = countDistinctExact(node),
+            nodesNotReady = countDistinctExact(if(notReady, node)),
+            nodesWithProb = countDistinctExact(if(hasProblem, node)),
+            badNodes      = collectDistinct(if(notReady or hasProblem, node)),
+            problems      = collectDistinct(p.problemName),
+            by:{apmid}
+| fieldsAdd badNodes = arrayRemoveNulls(badNodes), problems = arrayRemoveNulls(problems)
+| fieldsAdd nodeHealth = if(nodesTotal == 0, "N/A",
+                         else: if(nodesNotReady > 0 or nodesWithProb > 0, "🔴 Critical",
+                         else: "🟢 Healthy"))
+| fieldsAdd nodeReason = if(nodesNotReady > 0 and nodesWithProb > 0, "Node not ready + Davis problem",
+                         else: if(nodesNotReady > 0, "Node down / not ready",
+                         else: if(nodesWithProb > 0, "Davis problem on node", else: "-")))
+| fieldsAdd rank = if(contains(nodeHealth, "Critical"), 1, else: if(contains(nodeHealth, "Healthy"), 2, else: 3))
+| sort rank asc, apmid asc
+| fields nodeHealth, apmid, nodesTotal, nodesNotReady, nodesWithProb, nodeReason, badNodes, problems
