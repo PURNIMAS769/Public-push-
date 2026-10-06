@@ -1,55 +1,61 @@
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter contains(toString(affected_entity_ids), "KUBERNETES_NODE-")
-   or contains(toString(affected_entity_types), "kubernetes_node")
-| fields display_id, event.status, event.name, affected_entity_ids,
-         affected_entity_names, affected_entity_types
+Step 1: Find the mismatch (run this first)
+timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
+| filter startsWith(k8s.namespace.name, "app")
+| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
+| filter in(apmid, array($ClaimsApps))
+| summarize by:{nodeName = k8s.node.name}
+| lookup [
+    timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-30m
+    | filter node_condition == "Ready" and lower(condition_status) == "true"
+    | fieldsAdd nodeName = k8s.node.name, readyVal = arrayMax(c)
+    | fields nodeName, readyVal
+  ], sourceField: nodeName, lookupField: nodeName, prefix: "r."
+| fields nodeName, r.readyVal
 | limit 20
 
-If records come back: check that affected_entity_names holds the node name in the same format as D1 (e.g. arod08-2vn92-worker-northcentralus-e16sv5-7kjvv). If it does, the tile below works as written.
-If nothing comes back: there were no node problems in 30 days. The tile still works, and the Davis part simply stays at 0 until a node problem happens.
-Tile: OpenShift Node Health per application
-
-Visual: Table
-
+If r.readyVal = 1: the renamed join field was the problem. Go to Step 2.
+If it's null: the Ready metric isn't reporting the arod08-… nodes (your Ready screenshot only showed aks/arod01/arod03 at the top). Run the Ready query with | filter contains(k8s.node.name, "arod08") and send me the result.
+Step 2: Corrected tile
 data record(apmid = array($ClaimsApps))
 | expand apmid
-// app → nodes running its pods (last 30 min)
+// app → nodes
 | lookup [
     timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
     | filter startsWith(k8s.namespace.name, "app")
     | fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
     | summarize nodes = collectDistinct(k8s.node.name), by:{apmid}
   ], sourceField: apmid, lookupField: apmid, prefix: "m."
-| expand node = m.nodes
-// node Ready status (latest value)
+| expand nodeName = m.nodes
+// Ready status: seen in last 24h, ready in last 15m
 | lookup [
-    timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-30m
+    timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-24h, interval:5m
     | filter node_condition == "Ready" and lower(condition_status) == "true"
-    | fieldsAdd ready = coalesce(arrayLast(c), 0) > 0
-    | fields k8s.node.name, ready
-  ], sourceField: node, lookupField: k8s.node.name, prefix: "r."
-// active Davis problems on nodes
+    | fieldsAdd nodeName = k8s.node.name,
+                recentMax = arrayMax(arraySlice(c, from:-3))
+    | fieldsAdd notReady = isNull(recentMax) or recentMax < 1
+    | fields nodeName, notReady
+  ], sourceField: nodeName, lookupField: nodeName, prefix: "r."
+// node ID → name, then active problems by ID
 | lookup [
     fetch dt.davis.problems, from:-30d
     | sort timestamp desc
     | dedup display_id
     | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | filter contains(toString(affected_entity_ids), "KUBERNETES_NODE-")
-    | expand nodeName = affected_entity_names
+    | expand nodeId = affected_entity_ids
+    | filter startsWith(nodeId, "KUBERNETES_NODE-")
+    | lookup [ fetch dt.entity.kubernetes_node | fields id, nName = entity.name ],
+             sourceField: nodeId, lookupField: id, prefix: "e."
     | summarize nodeProblems = countDistinctExact(display_id),
-                problemName = takeFirst(event.name), by:{nodeName}
-  ], sourceField: node, lookupField: nodeName, prefix: "p."
-| fieldsAdd notReady   = isNotNull(node) and coalesce(r.ready, false) == false,
+                problemName = takeFirst(event.name), by:{nodeName = e.nName}
+  ], sourceField: nodeName, lookupField: nodeName, prefix: "p."
+| fieldsAdd notReady   = coalesce(r.notReady, false),
             hasProblem = coalesce(p.nodeProblems, 0) > 0
-| summarize nodesTotal    = countDistinctExact(node),
-            nodesNotReady = countDistinctExact(if(notReady, node)),
-            nodesWithProb = countDistinctExact(if(hasProblem, node)),
-            badNodes      = collectDistinct(if(notReady or hasProblem, node)),
-            problems      = collectDistinct(p.problemName),
+| summarize nodesTotal    = countDistinctExact(nodeName),
+            nodesNotReady = countDistinctExact(if(notReady, nodeName)),
+            nodesWithProb = countDistinctExact(if(hasProblem, nodeName)),
+            badNodes      = arrayRemoveNulls(collectDistinct(if(notReady or hasProblem, nodeName))),
+            problems      = arrayRemoveNulls(collectDistinct(p.problemName)),
             by:{apmid}
-| fieldsAdd badNodes = arrayRemoveNulls(badNodes), problems = arrayRemoveNulls(problems)
 | fieldsAdd nodeHealth = if(nodesTotal == 0, "N/A",
                          else: if(nodesNotReady > 0 or nodesWithProb > 0, "🔴 Critical",
                          else: "🟢 Healthy"))
