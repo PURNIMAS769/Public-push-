@@ -1,28 +1,26 @@
-Check the 9 host-only apps
-
-Run the same query with the last line replaced:
-
-| filter source == "claims-host"
-| fields apmid
-| sort apmid asc
-
-
-If you add the host names, it's easier to tell what each app is:
-
-fetch dt.entity.host
-| fields id, name = entity.name, tags
+fetch dt.entity.cloud_application_namespace
+| fields tags
+| filter contains(lower(toString(tags)), "portfolio:claims")
 | expand tag = tags
-| fieldsAdd lt = lower(tag)
-| summarize claimVals = countDistinctExact(if(contains(lt, "portfolio:claims"), tag)),
-            otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:claims")), tag)),
-            apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
-            appNames  = collectDistinct(if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1])),
-            by:{id, name}
-| filter claimVals > 0 and otherVals == 0
-| expand apmid = apmids
-| filter isNotNull(apmid)
-| summarize hosts = count(), hostNames = collectDistinct(name), appNames = collectDistinct(appNames), by:{apmid}
+| filter contains(tag, "APMID:")
+| fields apmid = splitString(tag, "APMID:")[1]
+| append [
+    fetch dt.entity.host
+    | fields id, tags
+    | expand tag = tags
+    | fieldsAdd lt = lower(tag)
+    | summarize claimVals = countDistinctExact(if(contains(lt, "portfolio:claims"), tag)),
+                otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:claims")), tag)),
+                apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
+                by:{id}
+    | filter claimVals > 0 and otherVals == 0
+    | expand apmid = apmids
+    | fields apmid
+  ]
+| filter isNotNull(apmid) and matchesPattern(apmid, "'APP' DIGIT{8}")
+| filter not(in(apmid, array("APP00005655", "APP02107205")))
+| dedup apmid
 | sort apmid asc
 
 
-The result list
+Exp
