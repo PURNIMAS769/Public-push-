@@ -1,80 +1,71 @@
+Tile A: Host Health (VM apps)
 data record(apmid = array($ClaimsApps))
 | expand apmid
-// app → queues (90d alert history) → queue managers (queue depth metric)
 | lookup [
-    fetch dt.davis.problems, from:-90d
-    | sort timestamp desc
-    | dedup display_id
-    | filter contains(event.name, "IBMMQ_APP")
-    | fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
-    | expand eid = affected_entity_ids
-    | lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
-             sourceField: eid, lookupField: id, prefix: "lq."
-    | filter isNotNull(lq.qName)
-    | summarize alerts = count(), by:{apmid, queueName = lq.qName}
-    | lookup [
-        timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
-        | summarize qms = collectDistinct(queue_manager), by:{queue_name}
-      ], sourceField: queueName, lookupField: queue_name, prefix: "m."
-    | expand qm = m.qms
-    | filter isNotNull(qm)
-    | summarize qms = collectDistinct(qm), queues = countDistinctExact(queueName), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "map."
-| expand qmName = map.qms
-// QM availability: reported in 24h, available in last 15m
-| lookup [
-    timeseries a = avg(ibmmq.queue_manager.availability), by:{queue_manager}, from:-24h, interval:5m
-    | fieldsAdd qmName = queue_manager, recentMax = arrayMax(arraySlice(a, from:-3))
-    | fieldsAdd qmDown = isNull(recentMax) or recentMax < 1
-    | fields qmName, qmDown
-  ], sourceField: qmName, lookupField: qmName, prefix: "a."
-// active "Queue manager is unavailable" alerts, matched by QM entity
+    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-24h, interval:5m
+    | fieldsAdd up = arraySize(arrayRemoveNulls(arraySlice(cpu, from:-3))) > 0
+    | lookup [ fetch dt.entity.host | fields id, tags ],
+             sourceField: dt.entity.host, lookupField: id, prefix: "e."
+    | expand tag = e.tags
+    | filter startsWith(tag, "APMID:")
+    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
+    | summarize hostsKnown = countDistinctExact(dt.entity.host),
+                hostsUp    = countDistinctExact(if(up, dt.entity.host)),
+                by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "h."
 | lookup [
     fetch dt.davis.problems, from:-30d
     | sort timestamp desc
     | dedup display_id
     | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | filter contains(lower(event.name), "queue_manager is unavailable")
-          or contains(lower(event.name), "queue manager is unavailable")
-    | expand eid = affected_entity_ids
-    | lookup [ fetch `dt.entity.ibmmq:queue_manager` | fields id, qmN = entity.name ],
-             sourceField: eid, lookupField: id, prefix: "e."
-    | filter isNotNull(e.qmN)
-    | summarize qmAlert = count(), by:{qmName = e.qmN}
-  ], sourceField: qmName, lookupField: qmName, prefix: "qa."
-// active MQ alerts carrying the app's APMID
+    | expand hostId = affected_entity_ids
+    | filter startsWith(hostId, "HOST-")
+    | lookup [ fetch dt.entity.host | fields id, tags ],
+             sourceField: hostId, lookupField: id, prefix: "e."
+    | expand tag = e.tags
+    | filter startsWith(tag, "APMID:")
+    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
+    | summarize hostProblems = countDistinctExact(display_id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "hp."
+| fieldsAdd hostsKnown   = coalesce(h.hostsKnown, 0),
+            hostsUp      = coalesce(h.hostsUp, 0),
+            hostProblems = coalesce(hp.hostProblems, 0)
+| filter hostsKnown > 0
+| fieldsAdd Status = if(hostsUp < hostsKnown or hostProblems > 0, "Unhealthy", else: "Healthy")
+| summarize Apps = count(), by:{Status}
+
+Tile B: OpenShift Node Health
+data record(apmid = array($ClaimsApps))
+| expand apmid
+| lookup [
+    timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
+    | filter startsWith(k8s.namespace.name, "app")
+    | fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
+    | summarize nodes = collectDistinct(k8s.node.name), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "m."
+| expand nodeName = m.nodes
+| lookup [
+    timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-24h, interval:5m
+    | filter node_condition == "Ready" and lower(condition_status) == "true"
+    | fieldsAdd nodeName = k8s.node.name, recentMax = arrayMax(arraySlice(c, from:-3))
+    | fieldsAdd notReady = isNull(recentMax) or recentMax < 1
+    | fields nodeName, notReady
+  ], sourceField: nodeName, lookupField: nodeName, prefix: "r."
 | lookup [
     fetch dt.davis.problems, from:-30d
     | sort timestamp desc
     | dedup display_id
     | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | filter contains(event.name, "IBMMQ_APP")
-    | fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
-    | summarize mqAlerts = countDistinctExact(display_id),
-                alertNames = collectDistinct(event.name), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "p."
-| fieldsAdd qmBad = coalesce(a.qmDown, false) or coalesce(qa.qmAlert, 0) > 0
-| summarize qmTotal    = countDistinctExact(qmName),
-            qmNotAvail = countDistinctExact(if(qmBad, qmName)),
-            badQMs     = arrayRemoveNulls(collectDistinct(if(qmBad, qmName))),
-            queues     = takeFirst(map.queues),
-            mqAlerts   = takeFirst(p.mqAlerts),
-            alertNames = takeFirst(p.alertNames),
+    | expand nodeId = affected_entity_ids
+    | filter startsWith(nodeId, "KUBERNETES_NODE-")
+    | lookup [ fetch dt.entity.kubernetes_node | fields id, nName = entity.name ],
+             sourceField: nodeId, lookupField: id, prefix: "e."
+    | summarize nodeProblems = countDistinctExact(display_id), by:{nodeName = e.nName}
+  ], sourceField: nodeName, lookupField: nodeName, prefix: "p."
+| fieldsAdd bad = coalesce(r.notReady, false) or coalesce(p.nodeProblems, 0) > 0
+| summarize nodesTotal = countDistinctExact(nodeName),
+            badNodes   = countDistinctExact(if(bad, nodeName)),
             by:{apmid}
-| fieldsAdd mqAlerts = coalesce(mqAlerts, 0), queues = coalesce(queues, 0),
-            qmUp = qmTotal - qmNotAvail
-| fieldsAdd mqHealth = if(qmTotal == 0 and mqAlerts == 0, "N/A",
-                       else: if(qmNotAvail > 0 or mqAlerts > 0, "🔴 Critical",
-                       else: "🟢 Healthy"))
-| fieldsAdd mqReason = if(qmNotAvail > 0 and mqAlerts > 0, "QM down + active MQ alert",
-                       else: if(qmNotAvail > 0, "Queue manager not available",
-                       else: if(mqAlerts > 0, "Active MQ alert", else: "-")))
-| fieldsAdd qmStatus = if(qmTotal == 0, "-", else: concat(toString(qmUp), " / ", toString(qmTotal)))
-| filter mqHealth != "N/A"
-| fieldsAdd badQMs = if(arraySize(badQMs) == 0, "-", else: toString(badQMs)),
-            alertNames = if(isNull(alertNames), "-", else: toString(alertNames))
-| fieldsAdd rank = if(contains(mqHealth, "Critical"), 1, else: 2)
-| sort rank asc, apmid asc
-| fields mqHealth, apmid, qmStatus, queues, mqAlerts, mqReason, badQMs, alertNames
-
-
+| filter nodesTotal > 0
+| fieldsAdd Status = if(badNodes > 0, "Unhealthy", else: "Healthy")
+| summarize Apps = count(), by:{Status}
