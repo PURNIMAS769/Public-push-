@@ -1,8 +1,14 @@
-timeseries {used = avg(dt.host.disk.used.percent), avail = avg(dt.host.disk.avail)},
+Tile 3.4b: Inode exhaustion risk
+
+I've made this a separate tile rather than a column in 3.4. Tile 3.4 only lists disks that are at least 85% full, and the whole point here is to catch filesystems that run out of inodes while they still have free space.
+
+timeseries {iAvail = avg(dt.host.disk.inodes_avail), iTotal = avg(dt.host.disk.inodes_total)},
            by:{dt.entity.host, dt.entity.disk}
-| fieldsAdd usedPct = round(arrayLast(arrayRemoveNulls(used)), decimals:1),
-            availGB = round(arrayLast(arrayRemoveNulls(avail)) / 1073741824, decimals:1)
-| filter usedPct >= 85
+| fieldsAdd iAvail = arrayLast(arrayRemoveNulls(iAvail)),
+            iTotal = arrayLast(arrayRemoveNulls(iTotal))
+| filter iTotal > 0
+| fieldsAdd inodeFreePct = round(100.0 * iAvail / iTotal, decimals:1)
+| filter inodeFreePct < 10
 | lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
          sourceField: dt.entity.host, lookupField: id, prefix: "h."
 | lookup [ fetch dt.entity.disk | fields id, mount = entity.name ],
@@ -11,15 +17,68 @@ timeseries {used = avg(dt.host.disk.used.percent), avail = avg(dt.host.disk.avai
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| fieldsAdd risk = if(usedPct >= 95, "🔴 Critical", else: "🟠 Warning")
+| fieldsAdd risk = if(inodeFreePct < 5, "🔴 Critical", else: "🟠 Warning")
 | fieldsAdd appHostDisk = concat(apmid, " | ", h.hostName, " : ", coalesce(d.mount, "unknown disk"))
-| fields risk, apmid, host = h.hostName, mount = d.mount, usedPct, availGB, dt.entity.host
-| sort usedPct desc, apmid asc
+| fields risk, appHostDisk, inodeFreePct, iAvail, iTotal, dt.entity.host
+| sort inodeFreePct asc
 
+Visual: Table. Colour inodeFreePct red below 5 and amber below 10.
+Windows hosts don't report inodes, so only Linux and AIX hosts appear. That's expected.
+If no rows come back, change < 10 to < 50 to check that the query works.
+Tile 3.5: Disk performance degradation (includes iowait)
 
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "dt.host.disk")
-| summarize series = count(), by:{metric.key}
+This uses averages over the selected time range, to match tiles 3.2 and 3.3. iowait is measured per host, not per disk, so the query attaches it to every disk on that host.
 
+timeseries {util = avg(dt.host.disk.util_time), q = avg(dt.host.disk.queue_length),
+            r = avg(dt.host.disk.read_time), w = avg(dt.host.disk.write_time)},
+           by:{dt.entity.host, dt.entity.disk}
+| fieldsAdd utilPct = round(arrayAvg(util), decimals:1),
+            queue   = round(arrayAvg(q), decimals:2),
+            readMs  = round(arrayAvg(r), decimals:1),
+            writeMs = round(arrayAvg(w), decimals:1)
+| lookup [
+    timeseries io = avg(dt.host.cpu.iowait), by:{dt.entity.host}
+    | fieldsAdd iowaitPct = round(arrayAvg(io), decimals:1)
+    | fields dt.entity.host, iowaitPct
+  ], sourceField: dt.entity.host, lookupField: dt.entity.host, prefix: "c."
+| fieldsAdd iowaitPct = c.iowaitPct
+| filter utilPct >= 80 or queue >= 2 or coalesce(readMs, 0) >= 20
+      or coalesce(writeMs, 0) >= 20 or coalesce(iowaitPct, 0) >= 20
+| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
+         sourceField: dt.entity.host, lookupField: id, prefix: "h."
+| lookup [ fetch dt.entity.disk | fields id, mount = entity.name ],
+         sourceField: dt.entity.disk, lookupField: id, prefix: "d."
+| expand tag = h.tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| fieldsAdd reason = arrayToString(arrayRemoveNulls(array(
+                if(utilPct >= 80, "High util"),
+                if(queue >= 2, "Queue"),
+                if(coalesce(readMs, 0) >= 20 or coalesce(writeMs, 0) >= 20, "Latency"),
+                if(coalesce(iowaitPct, 0) >= 20, "IOwait"))), delimiter:", ")
+| fieldsAdd appHostDisk = concat(apmid, " | ", h.hostName, " : ", coalesce(d.mount, "unknown disk"))
+| fields appHostDisk, reason, utilPct, queue, readMs, writeMs, iowaitPct, dt.entity.host
+| sort utilPct desc
 
-You can run
+Visual: Table. Tile timeframe: Last 2 hours.
+read_time is missing on many hosts (about 2.4k series, against about 7k for write_time), so it's wrapped in coalesce and a missing value won't drop the row.
+If arrayToString gives an error, use toString(...) in its place.
+Check one row against the host page. If utilPct comes out as a fraction such as 0.85 instead of 85, multiply it by 100.
+Tile 3.7: Recent reboots (uptime under 24h)
+timeseries up = avg(dt.host.uptime), by:{dt.entity.host}, from:-30m
+| fieldsAdd uptimeSec = arrayLast(arrayRemoveNulls(up))
+| filter isNotNull(uptimeSec) and uptimeSec < 86400
+| fieldsAdd uptimeHrs = round(uptimeSec / 3600, decimals:1),
+            rebootedAt = now() - duration(toLong(uptimeSec), "s")
+| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
+         sourceField: dt.entity.host, lookupField: id, prefix: "h."
+| expand tag = h.tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| fieldsAdd appHost = concat(apmid, " | ", h.hostName)
+| fields appHost, uptimeHrs, rebootedAt, dt.entity.host
+| sort uptimeHrs asc
+
+Visual: T
