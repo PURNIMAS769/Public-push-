@@ -1,22 +1,21 @@
-tep 2: If the columns are still blank, check the two halves separately
-
-2a: Does the queue metric return queue managers for these queue names?
-
-timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
-| filter startsWith(queue_name, "CLAIMS.") or startsWith(queue_name, "BCHIP.")
-| summarize qms = collectDistinct(queue_manager), by:{queue_name}
-| limit 20
-
-
-2b: What do the alert queue names look like?
+This shows each alert queue and whether a queue manager was found for it:
 
 fetch dt.davis.problems, from:-90d
 | sort timestamp desc
 | dedup display_id
 | filter contains(event.name, "IBMMQ_APP")
+| fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
+| filter in(apmid, array($ClaimsApps))
 | expand eid = affected_entity_ids
 | lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
          sourceField: eid, lookupField: id, prefix: "lq."
 | filter isNotNull(lq.qName)
-| summarize alerts = count(), by:{queueName = lq.qName}
-| limit 20
+| summarize alerts = count(), by:{apmid, queueName = lq.qName}
+| lookup [
+    timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
+    | summarize qms = collectDistinct(queue_manager), by:{queue_name}
+  ], sourceField: queueName, lookupField: queue_name, prefix: "m."
+| fieldsAdd qmList = toString(m.qms),
+            mapped = if(isNotNull(m.qms), "Yes", else: "No")
+| fields apmid, queueName, mapped, qmList
+| sort mapped asc, apmid asc
