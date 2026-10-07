@@ -1,152 +1,27 @@
-3.2 CPU pressure by app
-
-timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
-| fieldsAdd cpuAvg = arrayAvg(cpu)
+timeseries mem = avg(dt.host.memory.usage), by:{dt.entity.host}
+| fieldsAdd memAvg = arrayAvg(mem)
 | lookup [ fetch dt.entity.host | fields id, tags ],
          sourceField: dt.entity.host, lookupField: id, prefix: "e."
 | expand tag = e.tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| summarize maxCpu        = round(max(cpuAvg), decimals:1),
-            affectedHosts = countDistinctExact(if(cpuAvg >= 80, dt.entity.host)),
+| summarize maxMem        = round(max(memAvg), decimals:1),
+            affectedHosts = countDistinctExact(if(memAvg >= 85, dt.entity.host)),
             totalHosts    = countDistinctExact(dt.entity.host),
-            hostIds       = arrayRemoveNulls(collectDistinct(if(cpuAvg >= 80, dt.entity.host))),
+            hostIds       = arrayRemoveNulls(collectDistinct(if(memAvg >= 85, dt.entity.host))),
             by:{apmid}
 | filter affectedHosts > 0
 | expand dt.entity.host = hostIds
 | lookup [ fetch dt.entity.host | fields id, hostName = entity.name ],
          sourceField: dt.entity.host, lookupField: id, prefix: "h."
 | lookup [
-    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
-    | fieldsAdd hostCpu = round(arrayAvg(cpu), decimals:1)
-    | fields dt.entity.host, hostCpu
-  ], sourceField: dt.entity.host, lookupField: dt.entity.host, prefix: "c."
-| fields apmid, maxCpu, affectedHosts, totalHosts, affectedHost = h.hostName, hostCpu = c.hostCpu, dt.entity.host
-| sort maxCpu desc, apmid asc, hostCpu desc
+    timeseries mem = avg(dt.host.memory.usage), by:{dt.entity.host}
+    | fieldsAdd hostMem = round(arrayAvg(mem), decimals:1)
+    | fields dt.entity.host, hostMem
+  ], sourceField: dt.entity.host, lookupField: dt.entity.host, prefix: "m."
+| fields apmid, maxMem, affectedHosts, totalHosts, affectedHost = h.hostName, hostMem = m.hostMem, dt.entity.host
+| sort maxMem desc, apmid asc, hostMem desc
 
 
-Both the calculation and the 80% check now use each
-
-For
-
-
-
-
-
-3.3 Memory pressure by app
-
-Visual: Ranked bar. Category is label (app and host), value is memPeak.
-
-timeseries mem = avg(dt.host.memory.usage), by:{dt.entity.host}
-| fieldsAdd memPeak = round(arrayMax(mem), decimals:1)
-| filter memPeak >= 85
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "e."
-| expand tag = e.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| fieldsAdd label = concat(apmid, " | ", e.hostName)
-| fields label, apmid, host = e.hostName, memPeak
-| sort memPeak desc
-| limit 20
-
-3.4 Filesystem capacity risk
-
-Visual: Table. Add thresholds on usedPct: amber at 85, red at 95.
-
-timeseries {used = avg(dt.host.disk.used.percent), avail = avg(dt.host.disk.avail)},
-           by:{dt.entity.host, dt.entity.disk}, from:-30m
-| fieldsAdd usedPct = round(arrayLast(arrayRemoveNulls(used)), decimals:1),
-            availGB = round(arrayLast(arrayRemoveNulls(avail)) / 1073741824, decimals:1)
-| filter usedPct >= 85
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "h."
-| lookup [ fetch dt.entity.disk | fields id, mount = entity.name ],
-         sourceField: dt.entity.disk, lookupField: id, prefix: "d."
-| expand tag = h.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| fields apmid, host = h.hostName, mount = d.mount, usedPct, availGB
-| sort usedPct desc
-
-3.5 Disk performance degradation
-
-Run this check first to confirm which disk latency metrics exist in your tenant:
-
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "dt.host.disk")
-| summarize series = count(), by:{metric.key}
-
-
-This draft assumes dt.host.disk.read_time, write_time and queue_length exist. Adjust it after the check.
-
-Visual: Table. The 20 ms latency threshold is a starting value.
-
-timeseries {r = avg(dt.host.disk.read_time), w = avg(dt.host.disk.write_time),
-            q = avg(dt.host.disk.queue_length)},
-           by:{dt.entity.host, dt.entity.disk}
-| fieldsAdd readMs = round(arrayMax(r), decimals:1),
-            writeMs = round(arrayMax(w), decimals:1),
-            queue = round(arrayMax(q), decimals:1)
-| filter readMs >= 20 or writeMs >= 20
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "h."
-| lookup [ fetch dt.entity.disk | fields id, mount = entity.name ],
-         sourceField: dt.entity.disk, lookupField: id, prefix: "d."
-| expand tag = h.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| fields apmid, host = h.hostName, mount = d.mount, readMs, writeMs, queue
-| sort writeMs desc
-
-
-Trend for one selected app. This needs a single-select variable called $App, built with the query data record(a = array($ClaimsApps)) | expand a | fields a. Visual: Line chart.
-
-timeseries {readMs = avg(dt.host.disk.read_time), writeMs = avg(dt.host.disk.write_time)},
-           by:{dt.entity.host}
-| lookup [ fetch dt.entity.host | fields id, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "e."
-| filter contains(toString(e.tags), concat("APMID:", $App))
-| fieldsRemove e.tags
-
-3.6 Host monitoring gaps
-
-Visual: Table. This lists hosts tagged to a Claims app that sent no data in 24 hours, or that went stale in the last 15 minutes. from:-7d on the entity fetch keeps recently disappeared hosts in the list.
-
-fetch dt.entity.host, from:-7d
-| fields id, hostName = entity.name, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| lookup [
-    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-24h, interval:5m
-    | fieldsAdd seen24h = arraySize(arrayRemoveNulls(cpu)) > 0,
-                seen15m = arraySize(arrayRemoveNulls(arraySlice(cpu, from:-3))) > 0
-    | fields dt.entity.host, seen24h, seen15m
-  ], sourceField: id, lookupField: dt.entity.host, prefix: "m."
-| fieldsAdd gap = if(not(coalesce(m.seen24h, false)), "No data in 24h",
-                  else: if(not(coalesce(m.seen15m, false)), "Stale (>15 min)", else: "OK"))
-| filter gap != "OK"
-| fields apmid, hostName, gap
-| sort gap asc, apmid asc
-
-
-Hosts that are "No data in 24h" are probably decommissioned hosts that still carry the tag. They're worth sending to the CMDB team as cleanup.
-
-3.7 OS coverage split
-
-Visual: Bar
-
-fetch dt.entity.host
-| fields id, osType, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| summarize Hosts = countDistinctExact(id), Apps = countDistinctExact(apmid), by:{osType}
-| sort Hosts desc
+Settings:
