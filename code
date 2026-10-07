@@ -4,7 +4,7 @@ Visual: Ranked bar. Category is apmid, value is maxCpu. Leave the time range to 
 
 timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
 | fieldsAdd cpuPeak = arrayMax(cpu)
-| lookup [ fetch dt.entity.host | fields id, tags ],
+| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
          sourceField: dt.entity.host, lookupField: id, prefix: "e."
 | expand tag = e.tags
 | filter startsWith(tag, "APMID:")
@@ -12,11 +12,16 @@ timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
 | filter in(apmid, array($ClaimsApps))
 | summarize maxCpu        = round(max(cpuPeak), decimals:1),
             affectedHosts = countDistinctExact(if(cpuPeak >= 80, dt.entity.host)),
+            hostNames     = arrayRemoveNulls(collectDistinct(if(cpuPeak >= 80, e.hostName))),
             totalHosts    = countDistinctExact(dt.entity.host),
             by:{apmid}
 | filter affectedHosts > 0
+| fieldsAdd affectedHostNames = arrayToString(hostNames, delimiter:", ")
+| fields apmid, maxCpu, affectedHosts, totalHosts, affectedHostNames
 | sort maxCpu desc
 | limit 15
+
+
 
 3.3 Memory pressure by app
 
