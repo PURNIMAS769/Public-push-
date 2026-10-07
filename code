@@ -1,23 +1,32 @@
 3.2 CPU pressure by app
 
-Visual: Ranked bar. Category is apmid, value is maxCpu. Leave the time range to the dashboard picker.
-
-timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, interval:5m
-| fieldsAdd hostCpu  = round(arrayMax(cpu), decimals:1),
-            avgCpu   = round(arrayAvg(cpu), decimals:1),
-            peakTime = timeframe[start] + interval * arrayIndexOf(cpu, arrayMax(cpu)),
-            minsAbove80 = 5 * arraySum(iCollectArray(if(cpu[] >= 80, 1, else: 0)))
-| filter hostCpu >= 80
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
+timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
+| fieldsAdd cpuAvg = arrayAvg(cpu)
+| lookup [ fetch dt.entity.host | fields id, tags ],
          sourceField: dt.entity.host, lookupField: id, prefix: "e."
 | expand tag = e.tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| fieldsAdd pressure = if(minsAbove80 >= 60, "Sustained", else: "Spike")
-| fields apmid, affectedHost = e.hostName, hostCpu, avgCpu, minsAbove80, pressure, peakTime, dt.entity.host
-| sort minsAbove80 desc, hostCpu desc
+| summarize maxCpu        = round(max(cpuAvg), decimals:1),
+            affectedHosts = countDistinctExact(if(cpuAvg >= 80, dt.entity.host)),
+            totalHosts    = countDistinctExact(dt.entity.host),
+            hostIds       = arrayRemoveNulls(collectDistinct(if(cpuAvg >= 80, dt.entity.host))),
+            by:{apmid}
+| filter affectedHosts > 0
+| expand dt.entity.host = hostIds
+| lookup [ fetch dt.entity.host | fields id, hostName = entity.name ],
+         sourceField: dt.entity.host, lookupField: id, prefix: "h."
+| lookup [
+    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}
+    | fieldsAdd hostCpu = round(arrayAvg(cpu), decimals:1)
+    | fields dt.entity.host, hostCpu
+  ], sourceField: dt.entity.host, lookupField: dt.entity.host, prefix: "c."
+| fields apmid, maxCpu, affectedHosts, totalHosts, affectedHost = h.hostName, hostCpu = c.hostCpu, dt.entity.host
+| sort maxCpu desc, apmid asc, hostCpu desc
 
+
+Both the calculation and the 80% check now use each
 
 For
 
