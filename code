@@ -1,27 +1,24 @@
-timeseries mem = avg(dt.host.memory.usage), by:{dt.entity.host}
-| fieldsAdd memAvg = arrayAvg(mem)
-| lookup [ fetch dt.entity.host | fields id, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "e."
-| expand tag = e.tags
+timeseries {used = avg(dt.host.disk.used.percent), avail = avg(dt.host.disk.avail)},
+           by:{dt.entity.host, dt.entity.disk}
+| fieldsAdd usedPct = round(arrayLast(arrayRemoveNulls(used)), decimals:1),
+            availGB = round(arrayLast(arrayRemoveNulls(avail)) / 1073741824, decimals:1)
+| filter usedPct >= 85
+| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
+         sourceField: dt.entity.host, lookupField: id, prefix: "h."
+| lookup [ fetch dt.entity.disk | fields id, mount = entity.name ],
+         sourceField: dt.entity.disk, lookupField: id, prefix: "d."
+| expand tag = h.tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| summarize maxMem        = round(max(memAvg), decimals:1),
-            affectedHosts = countDistinctExact(if(memAvg >= 85, dt.entity.host)),
-            totalHosts    = countDistinctExact(dt.entity.host),
-            hostIds       = arrayRemoveNulls(collectDistinct(if(memAvg >= 85, dt.entity.host))),
-            by:{apmid}
-| filter affectedHosts > 0
-| expand dt.entity.host = hostIds
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "h."
-| lookup [
-    timeseries mem = avg(dt.host.memory.usage), by:{dt.entity.host}
-    | fieldsAdd hostMem = round(arrayAvg(mem), decimals:1)
-    | fields dt.entity.host, hostMem
-  ], sourceField: dt.entity.host, lookupField: dt.entity.host, prefix: "m."
-| fields apmid, maxMem, affectedHosts, totalHosts, affectedHost = h.hostName, hostMem = m.hostMem, dt.entity.host
-| sort maxMem desc, apmid asc, hostMem desc
+| fieldsAdd risk = if(usedPct >= 95, "🔴 Critical", else: "🟠 Warning")
+| fields risk, apmid, host = h.hostName, mount = d.mount, usedPct, availGB, dt.entity.host
+| sort usedPct desc, apmid asc
 
 
-Settings:
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "dt.host.disk")
+| summarize series = count(), by:{metric.key}
+
+
+You can run
