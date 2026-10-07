@@ -1,16 +1,22 @@
-C2: The same problem list, filtered to Claims
+Tile 4.1: Processes unavailable
+
+Visual: Table. Under No data, set the message to "All Claims processes available".
 
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
-| filter dt.davis.is_duplicate == false
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| filter event.name == "Process unavailable"
+      or event.name == "Process group low instance count"
 | expand tag = entity_tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| dedup display_id
-| summarize problems = count(), apps = countDistinctExact(apmid), by:{event.name}
-| sort problems desc
-| limit 25
-
-
+| expand eid = affected_entity_ids
+| filter startsWith(eid, "PROCESS_GROUP")
+| fieldsAdd dt.entity.process_group_instance = if(startsWith(eid, "PROCESS_GROUP_INSTANCE-"), eid),
+            procName = entityName(eid)
+| fieldsAdd appProcess = concat(apmid, " | ", coalesce(procName, eid)),
+            downFor = now() - event.start
+| fields appProcess, event.name, display_id, downFor, dt.entity.process_group_instance
+| sort downFor desc
