@@ -1,14 +1,10 @@
 Tile 3.4b: Inode exhaustion risk
 
-I've made this a separate tile rather than a column in 3.4. Tile 3.4 only lists disks that are at least 85% full, and the whole point here is to catch filesystems that run out of inodes while they still have free space.
-
-timeseries {iAvail = avg(dt.host.disk.inodes_avail), iTotal = avg(dt.host.disk.inodes_total)},
+timeseries {iFree = avg(dt.host.disk.inodes_avail), iTotal = avg(dt.host.disk.inodes_total)},
            by:{dt.entity.host, dt.entity.disk}
-| fieldsAdd iAvail = arrayLast(arrayRemoveNulls(iAvail)),
-            iTotal = arrayLast(arrayRemoveNulls(iTotal))
-| filter iTotal > 0
-| fieldsAdd inodeFreePct = round(100.0 * iAvail / iTotal, decimals:1)
-| filter inodeFreePct < 10
+| fieldsAdd inodeFreePct = round(arrayLast(arrayRemoveNulls(iFree)), decimals:1),
+            iTotal       = arrayLast(arrayRemoveNulls(iTotal))
+| filter isNotNull(inodeFreePct) and inodeFreePct < 10
 | lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
          sourceField: dt.entity.host, lookupField: id, prefix: "h."
 | lookup [ fetch dt.entity.disk | fields id, mount = entity.name ],
@@ -19,8 +15,11 @@ timeseries {iAvail = avg(dt.host.disk.inodes_avail), iTotal = avg(dt.host.disk.i
 | filter in(apmid, array($ClaimsApps))
 | fieldsAdd risk = if(inodeFreePct < 5, "🔴 Critical", else: "🟠 Warning")
 | fieldsAdd appHostDisk = concat(apmid, " | ", h.hostName, " : ", coalesce(d.mount, "unknown disk"))
-| fields risk, appHostDisk, inodeFreePct, iAvail, iTotal, dt.entity.host
+| fields risk, appHostDisk, inodeFreePct, iTotal, dt.entity.host
 | sort inodeFreePct asc
+
+
+What to expect: probably n
 
 Visual: Table. Colour inodeFreePct red below 5 and amber below 10.
 Windows hosts don't report inodes, so only Linux and AIX hosts appear. That's expected.
