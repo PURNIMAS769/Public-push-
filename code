@@ -1,30 +1,22 @@
-fetch dt.entity.host
-| filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
-| fields id, entity.name, os.type, tags
+tep 2: If the columns are still blank, check the two halves separately
 
-fetch dt.entity.process_group_instance
-| filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
-| fields id, entity.name, softwareTechnologies, tags
+2a: Does the queue metric return queue managers for these queue names?
 
-fetch dt.entity.process_group
-| filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
-| fields id, entity.name, tags
-
-fetch dt.entity.custom_device
-| filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
-| fields id, entity.name, tags
-
-fetch dt.entity.cloud_application_namespace
-| filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
-| fields id, entity.name, tags
+timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
+| filter startsWith(queue_name, "CLAIMS.") or startsWith(queue_name, "BCHIP.")
+| summarize qms = collectDistinct(queue_manager), by:{queue_name}
+| limit 20
 
 
-fetch dt.entity.application
-| filter arrayIndexOf(tags, "APMID:APP00005337") > -1 or arrayIndexOf(tags, "APPName:Blue_Chip_Eligibility__BCE__Prod") > -1
-| fields id, entity.name, tags
+2b: What do the alert queue names look like?
 
-
-fetch spans, scanLimitGBytes: 100
-| filter in(dt.entity.service, classicEntitySelector("type(service),tag(\"APMID:APP00005337\")"))
-| summarize count = count(), by:{server.address}
-| sort count desc
+fetch dt.davis.problems, from:-90d
+| sort timestamp desc
+| dedup display_id
+| filter contains(event.name, "IBMMQ_APP")
+| expand eid = affected_entity_ids
+| lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "lq."
+| filter isNotNull(lq.qName)
+| summarize alerts = count(), by:{queueName = lq.qName}
+| limit 20
