@@ -1,23 +1,17 @@
-orrected Tile 4.1: Processes unavailable
+Diagnostic query
+
+This keeps the Claims filter but drops the status and entity filters, so we can see what's actually there:
+
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
-| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| filter event.name == "Process unavailable"
-      or event.name == "Process group low instance count"
+| filter dt.davis.is_duplicate == false
+| filter contains(lower(event.name), "process unavailable")
+      or contains(lower(event.name), "low instance count")
 | expand tag = entity_tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| expand eid = affected_entity_ids
-| filter startsWith(eid, "PROCESS_GROUP")
-| lookup [ fetch dt.entity.process_group_instance | fields id, pgiName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "pgi."
-| lookup [ fetch dt.entity.process_group | fields id, pgName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "pg."
-| fieldsAdd procName = coalesce(pgi.pgiName, pg.pgName, eid),
-            dt.entity.process_group_instance = if(startsWith(eid, "PROCESS_GROUP_INSTANCE-"), eid)
-| fieldsAdd appProcess = concat(apmid, " | ", procName),
-            downFor = now() - event.start
-| fields appProcess, event.name, display_id, downFor, dt.entity.process_group_instance
-| sort downFor desc
+| dedup display_id
+| fieldsAdd idPrefix = splitString(toString(affected_entity_ids), "-")[0]
+| summarize problems = count(), by:{event.status, event.name, idPrefix}
