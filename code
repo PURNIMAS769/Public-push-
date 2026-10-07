@@ -1,7 +1,7 @@
-as seen in the last 7 days.
+his is the same query, but it counts every Claims host instead of filtering down to the silent ones:
 
 fetch dt.entity.host, from:-7d
-| fields dt.entity.host = id, hostName = entity.name, tags
+| fields dt.entity.host = id, hostName = entity.name, tags, lifetime
 | expand tag = tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
@@ -10,11 +10,6 @@ fetch dt.entity.host, from:-7d
     timeseries cpu = avg(dt.host.cpu.usage, scalar: true), by:{dt.entity.host}, from:-24h
     | fields dt.entity.host, cpu
   ], sourceField: dt.entity.host, lookupField: dt.entity.host, prefix: "m."
-| filter isNull(m.cpu)
-| fieldsAdd appHost = concat(apmid, " | ", hostName),
-            gap = "No data in 24h"
-| fields appHost, gap, dt.entity.host
-| sort appHost asc
-
-
-Visual: Tabl
+| summarize totalHosts = countDistinctExact(dt.entity.host),
+            reporting  = countDistinctExact(if(isNotNull(m.cpu), dt.entity.host)),
+            silent     = countDistinctExact(if(isNull(m.cpu), dt.entity.host))
