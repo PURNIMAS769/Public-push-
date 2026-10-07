@@ -1,32 +1,20 @@
-Step 1: Check without the 24h filter
+as seen in the last 7 days.
 
-This uses your scalar: true style and shows the lowest uptimes for Claims hosts:
-
-timeseries uptime = avg(dt.host.uptime, scalar: true), by:{dt.entity.host}, from:-30m
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "h."
-| expand tag = h.tags
+fetch dt.entity.host, from:-7d
+| fields dt.entity.host = id, hostName = entity.name, tags
+| expand tag = tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| fieldsAdd uptimeHrs = round(uptime / 3600, decimals:1),
-            uptimeDays = round(uptime / 86400, decimals:1)
-| fields apmid, host = h.hostName, uptimeHrs, uptimeDays, dt.entity.host
-| sort uptimeHrs asc
-| limit 20
+| lookup [
+    timeseries cpu = avg(dt.host.cpu.usage, scalar: true), by:{dt.entity.host}, from:-24h
+    | fields dt.entity.host, cpu
+  ], sourceField: dt.entity.host, lookupField: dt.entity.host, prefix: "m."
+| filter isNull(m.cpu)
+| fieldsAdd appHost = concat(apmid, " | ", hostName),
+            gap = "No data in 24h"
+| fields appHost, gap, dt.entity.host
+| sort appHost asc
 
-Rows with uptimes above 24h: the query works and the tile is correct. Nothing has rebooted recently.
-Still no records: the problem is the app linking, not the metric. Delete the filter in(apmid, ...) line and run it again, then send me the result.
-Step 2: Final tile 3.6
-timeseries uptime = avg(dt.host.uptime, scalar: true), by:{dt.entity.host}, from:-30m
-| filter uptime < 86400
-| fieldsAdd uptimeHrs = round(uptime / 3600, decimals:1)
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "h."
-| expand tag = h.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| fieldsAdd appHost = concat(apmid, " | ", h.hostName)
-| fields appHost, uptimeHrs, dt.entity.host
-| sort uptimeHrs asc
+
+Visual: Tabl
