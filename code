@@ -1,3 +1,6 @@
+| summarize `Total Apps` = count(), 
+Healthy = countIf(Status == "Healthy"),
+Unhealthy = countIf(Status == "Unhealthy")
 Tile A: Host Health (VM apps)
 data record(apmid = array($ClaimsApps))
 | expand apmid
