@@ -1,41 +1,16 @@
-D1: Service metrics that exist
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "dt.service")
-| summarize series = count(), by:{metric.key}
-| sort metric.key asc
+C2: The same problem list, filtered to Claims
 
-
-What we're checking: the request count, failure and response-time metric names, and the unit of response time.
-
-D2: Process and JVM metrics that exist
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "dt.process")
-      or startsWith(metric.key, "dt.runtime")
-| summarize series = count(), by:{metric.key}
-| sort metric.key asc
-
-
-What we're checking: whether there's a process availability metric, and which heap and GC metrics exist (and how many series each has).
-
-D3: Which technologies Claims services run on
-fetch dt.entity.service
-| fields id, tags, serviceType
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| summarize services = countDistinctExact(id), apps = countDistinctExact(apmid), by:{serviceType}
-| sort services desc
-
-
-What we're checking: how many Claims services are web/request services and how many are database services, and whether JVM tiles would cover enough apps to be worth building.
-
-D4: Service and process problem types in Davis (last 30 days)
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
-| filter contains(toString(affected_entity_types), "service")
-      or contains(toString(affected_entity_types), "process")
-| summarize problems = count(), by:{event.name, event.category}
+| filter dt.davis.is_duplicate == false
+| expand tag = entity_tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| dedup display_id
+| summarize problems = count(), apps = countDistinctExact(apmid), by:{event.name}
 | sort problems desc
-| limit 30
+| limit 25
+
+
