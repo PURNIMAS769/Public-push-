@@ -12,7 +12,7 @@ timeseries {used = avg(dt.host.disk.used.percent), avail = avg(dt.host.disk.avai
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
 | fieldsAdd risk = if(usedPct >= 95, "🔴 Critical", else: "🟠 Warning")
-| fieldsAdd hostDisk = concat(h.hostName, " : ", coalesce(d.mount, "unknown disk"))
+| fieldsAdd appHostDisk = concat(apmid, " | ", h.hostName, " : ", coalesce(d.mount, "unknown disk"))
 | fields risk, apmid, host = h.hostName, mount = d.mount, usedPct, availGB, dt.entity.host
 | sort usedPct desc, apmid asc
 
