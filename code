@@ -1,31 +1,12 @@
+Check which copies are unhealthy
 timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true),
            by:{device.name, availability.replica.name, availability.database.name,
                availability.database.synchronization_health,
-               availability.database.synchronization_state}, from:-30m
-| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
-| lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($ClaimsApps))
-    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| filter isNotNull(h.claimsApps)
-| expand apmid = h.claimsApps
-| fieldsAdd health   = availability.database.synchronization_health,
-            syncState = availability.database.synchronization_state
-| fieldsAdd status = if(health == "HEALTHY" and syncState == "SYNCHRONIZED", "🟢 Healthy",
-                     else: if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", "🔴 Critical",
-                     else: "🟠 Warning")),
-            rank   = if(health == "HEALTHY" and syncState == "SYNCHRONIZED", 3,
-                     else: if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", 1, else: 2))
-| fieldsAdd appServerDb = concat(apmid, " | ", device.name, " : ", availability.database.name)
-| fields status, appServerDb, replica = availability.replica.name, health, syncState, rank
-| sort rank asc, appServerDb asc
-| fieldsRemove rank
-
-
-Settings
+               availability.database.synchronization_state,
+               availability.database.state}, from:-30m
+| filter availability.database.name == "PICR_LP"
+| fields reporter = device.name, replica = availability.replica.name,
+         health = availability.database.synchronization_health,
+         syncState = availability.database.synchronization_state,
+         dbState = availability.database.state
+| sort reporter asc, replica asc
