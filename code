@@ -1,32 +1,4 @@
-timeseries st = max(`sql-server.databases.state`, scalar: true),
-           by:{device.name, database}, from:-30m
-| filter isNotNull(st)
-| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
-| lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($ClaimsApps))
-    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| filter isNotNull(h.claimsApps)
-| expand apmid = h.claimsApps
-| fieldsAdd state = if(st == 0, "ONLINE",
-                    else: if(st == 1, "RESTORING",
-                    else: if(st == 2, "RECOVERING",
-                    else: if(st == 3, "RECOVERY_PENDING",
-                    else: if(st == 4, "SUSPECT",
-                    else: if(st == 5, "EMERGENCY", else: "OFFLINE")))))),
-            status = if(st == 0, "🟢 Healthy",
-                     else: if(st <= 3, "🟠 Warning", else: "🔴 Critical")),
-            rank   = if(st == 0, 3, else: if(st <= 3, 2, else: 1))
-| fieldsAdd appServerDb = concat(apmid, " | ", device.name, " : ", database)
-| fields status, state, appServerDb, rank
-| sort rank asc, appServerDb asc
-| fieldsRemove rank
-
-
-Status rules:
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "sql-server.") and contains(metric.key, "backup")
+| summarize series = count(), by:{metric.key} 
+| sort metric.key asc
