@@ -1,34 +1,34 @@
-data record(apmid = array($ClaimsApps))
-| expand apmid
-// app -> queues (90d alert history) -> queue managers (queue depth metric)
+timeseries s = max(ibmmq.channel.status),
+           by:{queue_manager, channel_name, channel_type, channel_status},
+           from:-15m, interval:1m
+// keep only the status each channel is reporting now (not an old status from earlier in the window)
+| filter arraySize(arrayRemoveNulls(arraySlice(s, from:-3))) > 0
+| filter in(channel_status, {"Stopped", "Retrying", "Paused", "Binding", "Stopping"})
+// app -> queue managers (90d alert history -> queue depth metric)
 | lookup [
     fetch dt.davis.problems, from:-90d
     | sort timestamp desc
     | dedup display_id
     | filter contains(event.name, "IBMMQ_APP")
     | fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
+    | filter in(apmid, array($ClaimsApps))
     | expand eid = affected_entity_ids
     | lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
              sourceField: eid, lookupField: id, prefix: "lq."
     | filter isNotNull(lq.qName)
-    | summarize alerts = count(), by:{apmid, queueName = lq.qName}
+    | summarize by_q = count(), by:{apmid, queueName = lq.qName}
     | lookup [
         timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
         | summarize qms = collectDistinct(queue_manager), by:{queue_name}
       ], sourceField: queueName, lookupField: queue_name, prefix: "m."
     | expand qm = m.qms
     | filter isNotNull(qm)
-    | summarize qms = collectDistinct(qm), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "map."
-| filter isNotNull(map.qms)
-| expand qmName = map.qms
-// DLQ depth per queue manager (current value)
-| lookup [
-    timeseries dlq = max(ibmmq.queue_manager.dlq_depth, scalar: true),
-               by:{queue_manager}, from:-30m
-    | fields queue_manager, dlq
-  ], sourceField: qmName, lookupField: queue_manager, prefix: "d."
-| filter coalesce(d.dlq, 0) > 0
+    | summarize qmList = collectDistinct(qm), by:{apmid}
+    | expand qmName = qmList
+    | fields apmid, qmName
+  ], sourceField: queue_manager, lookupField: qmName, prefix: "map."
+| filter isNotNull(map.apmid)
+| fieldsAdd apmid = map.apmid
 // MQ server name and host ID
 | lookup [
     timeseries a = avg(ibmmq.queue_manager.availability),
@@ -36,22 +36,22 @@ data record(apmid = array($ClaimsApps))
     | summarize server = takeFirst(host.name),
                 hostId = takeFirst(dt.entity.host),
                 by:{queue_manager}
-  ], sourceField: qmName, lookupField: queue_manager, prefix: "a."
-// queue manager entity ID for Open with
+  ], sourceField: queue_manager, lookupField: queue_manager, prefix: "a."
+// entity IDs for Open with
 | lookup [
     fetch `dt.entity.ibmmq:queue_manager`
     | fields qmEntityId = id, qmEntityName = entity.name
-  ], sourceField: qmName, lookupField: qmEntityName, prefix: "e."
-| fieldsAdd dlqMessages = round(d.dlq, decimals:0),
-            status = if(d.dlq >= 100, "🔴 Critical", else: "🟠 Warning"),
-            rank   = if(d.dlq >= 100, 1, else: 2)
-| fieldsAdd appServerQm = concat(apmid, " | ", coalesce(a.server, "host n/a"), " : ", qmName)
-| fields status, appServerQm, dlqMessages,
+  ], sourceField: queue_manager, lookupField: qmEntityName, prefix: "e."
+| fieldsAdd status = if(channel_status == "Stopped" or channel_status == "Retrying",
+                        "🔴 Critical", else: "🟠 Warning"),
+            rank   = if(channel_status == "Stopped" or channel_status == "Retrying", 1, else: 2)
+| fieldsAdd appQmChannel = concat(apmid, " | ", coalesce(a.server, "host n/a"), " : ", queue_manager, " / ", channel_name)
+| fields status, appQmChannel, channelStatus = channel_status, channelType = channel_type,
          `dt.entity.ibmmq:queue_manager` = e.qmEntityId,
          dt.entity.host = a.hostId,
          rank
-| sort rank asc, dlqMessages desc
+| sort rank asc, appQmChannel asc
 | fieldsRemove rank
 
 
-Rules
+Settings
