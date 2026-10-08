@@ -1,4 +1,6 @@
 Query 1: Process memory (corrected)
+apmid as its own column, so you can see which one you're getting.
+
 timeseries mem = avg(dt.process.memory.working_set_size),
            by:{dt.entity.process_group_instance}
 | fieldsAdd `Memory (GiB)` = round(arrayAvg(mem) / 1073741824, decimals:2)
@@ -17,12 +19,13 @@ timeseries mem = avg(dt.process.memory.working_set_size),
     | filter arraySize(apmids) == 1
     | fieldsAdd apmid = apmids[0], AppName = coalesce(appNames[0], apmids[0])
     | filter in(apmid, array($ClaimsApps))
-    | fields id, Process, hostId, AppName
+    | fields id, Process, hostId, AppName, apmid
   ], sourceField:dt.entity.process_group_instance, lookupField:id, prefix:"p."
 | filter isNotNull(p.id)
 | lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
          sourceField:p.hostId, lookupField:id, prefix:"h."
-| fields `App Name` = p.AppName, Process = p.Process, Host = h.Host, `Memory (GiB)`, dt.entity.process_group_instance
+| fieldsAdd `App | Process` = concat(p.AppName, " | ", p.Process)
+| fields `App | Process`, apmid = p.apmid, Host = h.Host, `Memory (GiB)`, dt.entity.process_group_instance
 | sort `Memory (GiB)` desc
 | limit 10
 
