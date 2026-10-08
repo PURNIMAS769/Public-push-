@@ -1,44 +1,52 @@
-1: Which Claims hosts are database servers?
-
-fetch dt.entity.host
-| fields id, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:") or startsWith(tag, "DB_C:")
-| summarize apmids = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1]))),
-            dbTypes = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "DB_C:"), tag))),
-            by:{id}
-| filter arraySize(dbTypes) > 0
-| expand apmid = apmids
-| filter in(apmid, array($ClaimsApps))
-| summarize dbHosts = countDistinctExact(id), by:{apmid, dbTypes}
-| sort dbHosts desc
-
-
-This shows which Claims apps sit on DB-tagged hosts, and which database type each one uses.
-
-F2: Do the database entities carry any tags? Run these one at a time.
+G1: How many Claims APMIDs are on Oracle and DB2 entities? Run it twice. The second time, change the first line to fetch `dt.entity.sql:db2_instance`.
 
 fetch `dt.entity.sql:com_dynatrace_extension_sql-oracle_instance`
-| fields id, entity.name, tags
-| limit 20
+| fields id, tags
+| expand tag = tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| fieldsAdd isClaims = in(apmid, array($ClaimsApps))
+| summarize instancesWithApmid = countDistinctExact(id),
+            claimsInstances    = countDistinctExact(if(isClaims, id)),
+            claimsApps         = countDistinctExact(if(isClaims, apmid)),
+            allApps            = countDistinctExact(apmid)
 
-fetch `dt.entity.sql:db2_instance`
-| fields id, entity.name, tags
-| limit 20
+
+G2: Can MSSQL availability groups be matched to Claims hosts by name?
 
 fetch `dt.entity.sql:sql_server_availability_group`
-| fields id, entity.name, tags
-| limit 20
-
-
-I'm looking for APMID: or Portfolio:Claims in tags. If an entity type name errors, tell me which one. I haven't verified the MSSQL instance type name.
-
-F3: Do the extension IPs match Claims host IPs? This is the test for option 3. I haven't confirmed that ipAddress is the right field name on the host entity, so if it errors, send me the error.
-
-timeseries a = avg(db2.availability, scalar: true), by:{device.address}, from:-2h
+| fields id, tags
+| expand tag = tags
+| filter startsWith(tag, "Instance_Name:MSSQLSERVER@")
+| fieldsAdd hostShort = lower(splitString(tag, "@")[1])
 | lookup [
     fetch dt.entity.host
-    | fields id, hostName = entity.name, ips = ipAddress
-    | expand ip = ips
-  ], sourceField: device.address, lookupField: ip, prefix: "h."
-| summarize extensionIps = count(), matchedToHost = countIf(isNotNull(h.id))
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | summarize claimsApps = arrayRemoveNulls(collectDistinct(if(in(apmid, array($ClaimsApps)), apmid))),
+                hostFound = true, by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| summarize agsTotal         = countDistinctExact(id),
+            agsMatchedToHost = countDistinctExact(if(h.hostFound == true, id)),
+            agsOnClaimsHosts = countDistinctExact(if(h.hostFound == true and arraySize(h.claimsApps) > 0, id))
+
+
+I haven't tested this. If lookup rejects the true field, replace it with hostFound = count().
+
+G3: Which entity do the PostgreSQL metrics sit on?
+
+fetch metric.series, from:-2h
+| filter in(metric.key, {"postgres.uptime", "postgres.recovery.state"})
+| dedup metric.key
+
+
+Scroll right and tell me which dimension columns appear. I'm looking for a process group instance, host or custom device ID.
+
+G4: What are the z/OS DB2 subsystems called?
+
+fetch metric.series, from:-2h
+| filter metric.key == "dt.process.zos.db2.num_failed_connections"
+| limit 5
