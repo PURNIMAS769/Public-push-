@@ -1,30 +1,58 @@
-timeseries gc = avg(dt.runtime.jvm.gc.suspension_time),
-           by:{dt.entity.process_group_instance}
-| fieldsAdd gcSuspension = round(arrayAvg(gc), decimals:2)
-| filter gcSuspension >= 5
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd hostId = belongs_to[dt.entity.host]
-    | fields id, Process = entity.name, hostId, tags
-    | expand tag = tags
-    | filter contains(tag, "APMID:") or contains(tag, "APPName:")
-    | summarize apmids   = arrayRemoveNulls(collectDistinct(
-                              if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1]))),
-                appNames = arrayRemoveNulls(collectDistinct(
-                              if(contains(tag, "APPName:"), splitString(tag, "APPName:")[1]))),
-                by:{id, Process, hostId}
-    | filter arraySize(apmids) == 1
-    | fieldsAdd apmid = apmids[0], AppName = coalesce(appNames[0], apmids[0])
-    | filter in(apmid, array($ClaimsApps))
-    | fields id, Process, hostId, AppName, apmid
-  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
-| filter isNotNull(p.id)
-| lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
-         sourceField: p.hostId, lookupField: id, prefix: "h."
-| fieldsAdd risk = if(gcSuspension >= 10, "🔴 Critical", else: "🟠 Warning"),
-            `App | Process` = concat(p.AppName, " | ", p.Process)
-| fields risk, `App | Process`, apmid = p.apmid, Host = h.Host, gcSuspension, dt.entity.process_group_instance
-| sort gcSuspension desc
+D1: Which DB metrics exist, and how many series each
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "db2.")
+      or startsWith(metric.key, "sql-server.")
+      or startsWith(metric.key, "com.dynatrace.extension.sql-oracle")
+      or startsWith(metric.key, "mongodb.")
+      or startsWith(metric.key, "cloud.azure.microsoft_sql")
+| summarize series = count(), by:{metric.key}
+| sort metric.key asc
 
 
-Settings:
+If the list is too long for one screenshot, send it one technology at a time.
+
+D2: Dimensions on the key availability and health metrics
+
+This returns one record per metric. Scroll right and tell me the dimension columns. I'm looking for a dt.entity.* ID, a host, a process group instance, or an instance or database name.
+
+fetch metric.series, from:-2h
+| filter in(metric.key, {"db2.availability", "db2.hadr_state",
+                         "sql-server.uptime", "sql-server.always-on.db.synchronizationHealth",
+                         "com.dynatrace.extension.sql-oracle.status", "mongodb.current_connections"})
+| dedup metric.key
+
+
+Keys that don't exist in your tenant simply won't return a row.
+
+D3: Do Claims apps have DB processes, and which technologies?
+fetch dt.entity.process_group_instance
+| fields id, softwareTechnologies, tags
+| expand tag = tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| expand tech = softwareTechnologies
+| fieldsAdd t = lower(toString(tech))
+| filter contains(t, "db2") or contains(t, "sql") or contains(t, "oracle") or contains(t, "mongo")
+| summarize instances = countDistinctExact(id), apps = countDistinctExact(apmid), by:{t}
+| sort apps desc
+
+
+This tells us whether Claims apps carry DB processes directly. If it comes back empty, the databases sit on shared DB hosts that carry other apps' APMIDs. In that case we'd link by service calls or by alert names, as we did for MQ.
+
+I haven't confirmed that softwareTechnologies works this way on process group instances in your tenant. If it errors, send me the error.
+
+D4: DB-related Davis problems in the last 30 days (not filtered to Claims)
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter dt.davis.is_duplicate == false
+| filter contains(lower(event.name), "db2") or contains(lower(event.name), "sql")
+      or contains(lower(event.name), "oracle") or contains(lower(event.name), "mongo")
+      or contains(lower(event.name), "database") or contains(lower(event.name), "hadr")
+      or contains(lower(event.name), "deadlock") or contains(lower(event.name), "tablespace")
+      or contains(lower(event.name), "backup")
+| fieldsAdd types = toString(affected_entity_types)
+| summarize problems = count(), active = countIf(event.status == "ACTIVE"), by:{event.name, types}
+| sort problems desc
+| limit 30
