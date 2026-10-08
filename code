@@ -1,58 +1,6 @@
-Tile 1: Top processes by CPU
-timeseries cpu = avg(dt.process.cpu.usage),
-           by:{dt.entity.process_group_instance}
-| fieldsAdd `CPU (%)` = round(arrayAvg(cpu), decimals:1)
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd hostId = belongs_to[dt.entity.host]
-    | fields id, Process = entity.name, hostId, tags
-    | expand tag = tags
-    | fieldsAdd tag = toString(tag)
-    | summarize apmids = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                           else: if(contains(tag, "APPID:"), splitString(tag, "APPID:")[1]))),
-                appNames = collectDistinct(if(contains(tag, "APPName:"), splitString(tag, "APPName:")[1])),
-                by:{id, Process, hostId}
-    | fieldsAdd apmid = apmids[0], AppName = coalesce(appNames[0], apmids[0])
-    | filter in(apmid, array($ClaimsApps))
-    | fields id, Process, hostId, AppName
-  ], sourceField:dt.entity.process_group_instance, lookupField:id, prefix:"p."
-| filter isNotNull(p.id)
-| lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
-    sourceField:p.hostId, lookupField:id, prefix:"h."
-| fields `App Name` = p.AppName, Process = p.Process, Host = h.Host, `CPU (%)`
-| sort `CPU (%)` desc
-| limit 10
-
-Tile 2: Top processes by memory
-timeseries mem = avg(dt.process.memory.working_set_size),
-           by:{dt.entity.process_group_instance}
-| fieldsAdd `Memory (GiB)` = round(arrayAvg(mem) / 1073741824, decimals:2)
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fieldsAdd hostId = belongs_to[dt.entity.host]
-    | fields id, Process = entity.name, hostId, tags
-    | expand tag = tags
-    | fieldsAdd tag = toString(tag)
-    | summarize apmids = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                           else: if(contains(tag, "APPID:"), splitString(tag, "APPID:")[1]))),
-                appNames = collectDistinct(if(contains(tag, "APPName:"), splitString(tag, "APPName:")[1])),
-                by:{id, Process, hostId}
-    | fieldsAdd apmid = apmids[0], AppName = coalesce(appNames[0], apmids[0])
-    | filter in(apmid, array($ClaimsApps))
-    | fields id, Process, hostId, AppName
-  ], sourceField:dt.entity.process_group_instance, lookupField:id, prefix:"p."
-| filter isNotNull(p.id)
-| lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
-    sourceField:p.hostId, lookupField:id, prefix:"h."
-| fields `App Name` = p.AppName, Process = p.Process, Host = h.Host, `Memory (GiB)`
-| sort `Memory (GiB)` desc
-| limit 10
-
-Tile 3: Services by response time
+ile 3 (trend): Service response time
 timeseries rt = avg(dt.service.request.response_time),
            by:{dt.entity.service}
-| fieldsAdd `Avg RT (ms)` = round(arrayAvg(rt) / 1000, decimals:1),
-            `Max RT (ms)` = round(arrayMax(rt) / 1000, decimals:1)
 | lookup [
     fetch dt.entity.service
     | fields id, Service = entity.name, tags
@@ -67,6 +15,12 @@ timeseries rt = avg(dt.service.request.response_time),
     | fields id, Service, AppName
   ], sourceField:dt.entity.service, lookupField:id, prefix:"s."
 | filter isNotNull(s.id)
-| fields `App Name` = s.AppName, Service = s.Service, `Avg RT (ms)`, `Max RT (ms)`
-| sort `Avg RT (ms)` desc
+| fieldsAdd `Response Time (ms)` = rt[] / 1000,
+            rt_avg = arrayAvg(rt)
+| fieldsAdd Series = concat(s.AppName, " | ", s.Service)
+| sort rt_avg desc
 | limit 10
+| fields timeframe, interval, Series, `Response Time (ms)`
+
+What changed from the table version
+Part
