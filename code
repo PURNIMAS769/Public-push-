@@ -1,4 +1,4 @@
-ile 3 (trend): Service response time
+Updated query
 timeseries rt = avg(dt.service.request.response_time),
            by:{dt.entity.service}
 | lookup [
@@ -15,12 +15,8 @@ timeseries rt = avg(dt.service.request.response_time),
     | fields id, Service, AppName
   ], sourceField:dt.entity.service, lookupField:id, prefix:"s."
 | filter isNotNull(s.id)
-| fieldsAdd `Response Time (ms)` = rt[] / 1000,
-            rt_avg = arrayAvg(rt)
+| fieldsAdd rt_avg = arrayAvg(rt)
 | fieldsAdd Series = concat(s.AppName, " | ", s.Service)
 | sort rt_avg desc
 | limit 10
-| fields timeframe, interval, Series, `Response Time (ms)`
-
-What changed from the table version
-Part
+| fields timeframe, interval, Series, `Response Time` = rt
