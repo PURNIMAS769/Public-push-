@@ -1,15 +1,18 @@
+Tile 5.1b: MSSQL databases that recently changed state
+
+This is the exception table. An empty table is the healthy state, so under No data set the message to "No Claims MSSQL database changed state recently". The query sets its own 7-day window, so it ignores the dashboard time picker.
+
 timeseries st = max(`sql-server.databases.state`),
            by:{device.name, database}, from:-7d, interval:1h
 | fieldsAdd stClean  = arrayRemoveNulls(st)
 | fieldsAdd nowState = arrayLast(stClean),
             minState = arrayMin(stClean)
-| filter nowState > 0
+| filter nowState > 0 and minState == 0
 | fieldsAdd stateName = if(nowState == 6, "OFFLINE",
                         else: if(nowState == 5, "EMERGENCY",
                         else: if(nowState == 4, "SUSPECT",
                         else: if(nowState == 3, "RECOVERY_PENDING",
                         else: if(nowState == 2, "RECOVERING", else: "RESTORING")))))
-| fieldsAdd history = if(minState == 0, "1 - Recent change", else: "2 - Long-term")
 | fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
@@ -22,11 +25,37 @@ timeseries st = max(`sql-server.databases.state`),
     | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | filter isNotNull(h.claimsApps)
-| fieldsAdd apps = arrayToString(h.claimsApps, delimiter:", ")
-| fields history, stateName, server = device.name, database, apps
-| sort history asc, stateName asc, server asc
+| fieldsAdd status = if(nowState == 2 or nowState == 1,
+                        concat("🟠 ", stateName), else: concat("🔴 ", stateName)),
+            apps = arrayToString(h.claimsApps, delimiter:", ")
+| fields status, server = device.name, database, apps
+| sort status asc, server asc
+
+Tile 5.1c: one-row MSSQL summary
+
+This gives the three numbers you asked for, plus the long-term count for the DBA team.
+
+timeseries st = max(`sql-server.databases.state`),
+           by:{device.name, database}, from:-7d, interval:1h
+| fieldsAdd stClean  = arrayRemoveNulls(st)
+| fieldsAdd nowState = arrayLast(stClean),
+            minState = arrayMin(stClean)
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
+| lookup [
+    fetch dt.entity.host
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($ClaimsApps))
+    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| filter isNotNull(h.claimsApps)
+| summarize `Total databases`       = count(),
+            Healthy                 = countIf(nowState == 0),
+            `Recent issue`          = countIf(nowState > 0 and minState == 0),
+            `Long-term not online`  = countIf(nowState > 0 and minState > 0)
 
 
-Run it over the Last 7 days or longer. The query sets the window itself with from:-7d.
-
-Wha
+Wh
