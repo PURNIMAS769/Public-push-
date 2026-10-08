@@ -1,17 +1,54 @@
-Diagnostic query
+Discovery 1: Are process instances tagged with the APMID?
+fetch dt.entity.process_group_instance
+| fieldsAdd tags
+| filter contains(toString(tags), "APMID:APP0000XXXX")
+| fields id, entity.name, tags
+| limit 50
 
-This keeps the Claims filter but drops the status and entity filters, so we can see what's actually there:
+
+If this returns no records, run the same query on dt.entity.process_group. Tags are sometimes on the process group rather than the instance.
+
+Discovery 2: Do the process CPU and memory metrics return data?
+timeseries cpu = avg(dt.process.cpu.usage),
+           mem = avg(dt.process.memory.working_set_size),
+           by:{dt.entity.process_group_instance}
+| limit 10
+
+Discovery 3: Are services tagged with the APMID?
+fetch dt.entity.service
+| fieldsAdd tags
+| filter contains(toString(tags), "APMID:APP0000XXXX")
+| fields id, entity.name, tags
+| limit 50
+
+Discovery 4: Does the response time metric return data?
+timeseries rt = avg(dt.service.request.response_time),
+           by:{dt.entity.service}
+| limit 10
+
+
+
+
+Visual: Table. Under No data, set the message to "All Claims endpoints available".
 
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
-| filter dt.davis.is_duplicate == false
-| filter contains(lower(event.name), "process unavailable")
-      or contains(lower(event.name), "low instance count")
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| filter contains(lower(event.name), "monitor") and contains(lower(event.name), "outage")
 | expand tag = entity_tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| dedup display_id
-| fieldsAdd idPrefix = splitString(toString(affected_entity_ids), "-")[0]
-| summarize problems = count(), by:{event.status, event.name, idPrefix}
+| expand eid = affected_entity_ids
+| lookup [ fetch dt.entity.http_check | fields id, httpName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "h."
+| lookup [ fetch dt.entity.synthetic_test | fields id, browserName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "b."
+| fieldsAdd monitor = coalesce(h.httpName, b.browserName, eid),
+            scope = if(contains(lower(event.name), "global"), "🔴 Global",
+                    else: if(contains(lower(event.name), "local"), "🟠 Local", else: "🔴 Outage"))
+| fieldsAdd appMonitor = concat(apmid, " | ", monitor),
+            downFor = now() - event.start
+| fields scope, appMonitor, event.name, display_id, downFor
+| sort scope asc, downFor desc
