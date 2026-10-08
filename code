@@ -1,33 +1,106 @@
-Tile 7.4: Pod restart increases
+Discovery
 
-Restarts during the selected period only, ranked highest first. Set the tile timeframe to Last 24 hours.
+N1: NIC metric keys and series counts
 
-timeseries r = sum(dt.kubernetes.container.restarts),
-           by:{k8s.cluster.name, k8s.namespace.name, k8s.workload.name}
-| filter startsWith(k8s.namespace.name, "app")
-| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)),
-            restarts = arraySum(r)
-| filter in(apmid, array($ClaimsApps)) and restarts >= 10
-| fieldsAdd status = if(restarts >= 50, "🔴 Critical", else: "🟠 Warning"),
-            rank   = if(restarts >= 50, 1, else: 2)
-| fieldsAdd appWorkload = concat(apmid, " | ", k8s.namespace.name, " : ", k8s.workload.name)
-| fields status, appWorkload, cluster = k8s.cluster.name, restarts = round(restarts, decimals:0), rank
-| sort rank asc, restarts desc
-| fieldsRemove rank
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "dt.host.net")
+| summarize series = count(), by:{metric.key}
+| sort metric.key asc
 
-Tile 7.5: OOMKilled workloads
 
-Workloads killed for exceeding their memory limit. Set the tile timeframe to Last 24 hours.
+N2: Dimensions on the NIC metrics
 
-timeseries o = sum(dt.kubernetes.container.oom_kills),
-           by:{k8s.cluster.name, k8s.namespace.name, k8s.workload.name}
-| filter startsWith(k8s.namespace.name, "app")
-| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)),
-            oomKills = arraySum(o)
-| filter in(apmid, array($ClaimsApps)) and oomKills > 0
-| fieldsAdd status = if(oomKills >= 10, "🔴 Critical", else: "🟠 Warning"),
-            rank   = if(oomKills >= 10, 1, else: 2)
-| fieldsAdd appWorkload = concat(apmid, " | ", k8s.namespace.name, " : ", k8s.workload.name)
-| fields status, appWorkload, cluster = k8s.cluster.name, oomKills = round(oomKills, decimals:0), rank
-| sort rank asc, oomKills desc
-| fieldsRemove rank
+fetch metric.series, from:-2h
+| filter in(metric.key, {"dt.host.net.nic.packets.errors_rx", "dt.host.net.nic.packets.dropped_rx"})
+| dedup metric.key
+
+
+Scroll right and send me the dimension columns. I'm looking for an interface or NIC name, so tiles 8.2 and 8.3 can show the interface. If there's only dt.entity.host, those tiles will show hosts only.
+
+N3: How many Claims hosts have drops or errors, and how large
+
+timeseries {drx = sum(dt.host.net.nic.packets.dropped_rx),
+            dtx = sum(dt.host.net.nic.packets.dropped_tx),
+            erx = sum(dt.host.net.nic.packets.errors_rx),
+            etx = sum(dt.host.net.nic.packets.errors_tx)},
+           by:{dt.entity.host}, from:-2h
+| fieldsAdd drops  = coalesce(arraySum(drx), 0) + coalesce(arraySum(dtx), 0),
+            errors = coalesce(arraySum(erx), 0) + coalesce(arraySum(etx), 0)
+| lookup [ fetch dt.entity.host | fields id, tags ],
+         sourceField: dt.entity.host, lookupField: id, prefix: "e."
+| expand tag = e.tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| summarize hosts           = countDistinctExact(dt.entity.host),
+            hostsWithDrops  = countDistinctExact(if(drops > 0, dt.entity.host)),
+            hostsWithErrors = countDistinctExact(if(errors > 0, dt.entity.host)),
+            maxDrops        = max(drops),
+            maxErrors       = max(errors)
+
+
+This returns one row. It tells us whether "above 0" is a usable threshold or whether most hosts would show up as noise.
+
+N4: Process network metrics, with series counts
+
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "dt.process.network")
+| summarize series = count(), by:{metric.key}
+| sort series desc
+
+
+I'm looking for a total-packets metric next to the retransmit ones. With one, we could show retransmission as a percentage, which means more than a raw count.
+
+N5: Do process network metrics link to Claims apps?
+
+timeseries {retx = sum(dt.process.network.packets.re_tx_aggr),
+            resets = sum(dt.process.network.sessions.reset_aggr),
+            timeouts = sum(dt.process.network.sessions.timeout_aggr)},
+           by:{dt.entity.process_group_instance}, from:-2h
+| fieldsAdd retx = coalesce(arraySum(retx), 0),
+            resets = coalesce(arraySum(resets), 0),
+            timeouts = coalesce(arraySum(timeouts), 0)
+| lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
+         sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
+| expand tag = e.tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| summarize processes   = countDistinctExact(dt.entity.process_group_instance),
+            retransmits = sum(retx), resets = sum(resets), timeouts = sum(timeouts),
+            by:{apmid}
+| sort retransmits desc
+
+
+Send me the number of apps returned and the top 10 rows. If OpenShift apps are missing, I'll look at linking them through the namespace.
+
+N6: Network problems on Claims apps
+
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter dt.davis.is_duplicate == false
+| expand tag = entity_tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| dedup display_id
+| filter contains(lower(event.name), "network") or contains(lower(event.name), "packet")
+      or contains(lower(event.name), "retransmi") or contains(lower(event.name), "connectivity")
+      or contains(lower(event.name), "nic") or contains(lower(event.name), "latency")
+      or contains(lower(event.name), "reset") or contains(lower(event.name), "timeout")
+| summarize problems = count(),
+            active   = countIf(event.status == "ACTIVE"),
+            apps     = countDistinctExact(apmid),
+            types    = collectDistinct(toString(affected_entity_types)),
+            by:{event.name}
+| sort problems desc
+
+
+This shows whether network problems happen on Claims apps at all. If it returns nothing, 8.1 would be a standing empty tile.
+
+Units, from the metric browser. Send the Unit and Description for:
+
+dt.host.net.nic.packets.dropped_rx
+dt.process.network.packets.re_tx_aggr
+dt.process.network.sessions.reset_aggr
