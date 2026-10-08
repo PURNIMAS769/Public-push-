@@ -1,27 +1,18 @@
-Discovery: failure rate per service
-timeseries {req = sum(dt.service.request.count), fail = sum(dt.service.request.failure_count)},
+Check A: Are the metrics returning data?
+timeseries {req = sum(dt.service.request.count),
+            fail = sum(dt.service.request.failure_count, default:0)},
            by:{dt.entity.service}
 | fieldsAdd reqs = arraySum(req), fails = arraySum(fail)
-| filter reqs > 0
-| lookup [
-    fetch dt.entity.service
-    | fields id, Service = entity.name, serviceType, tags
-    | expand tag = tags
-    | fieldsAdd tag = toString(tag)
-    | summarize apmids = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                           else: if(contains(tag, "APPID:"), splitString(tag, "APPID:")[1]))),
-                appNames = collectDistinct(if(contains(tag, "APPName:"), splitString(tag, "APPName:")[1])),
-                by:{id, Service, serviceType}
-    | filter arraySize(apmids) == 1
-    | fieldsAdd apmid = apmids[0], AppName = coalesce(appNames[0], apmids[0])
-    | filter in(apmid, array($ClaimsApps))
-    | fields id, Service, serviceType, AppName
-  ], sourceField:dt.entity.service, lookupField:id, prefix:"s."
-| filter isNotNull(s.id)
-| fieldsAdd failRate = round(100.0 * fails / reqs, decimals:2)
-| fields `App Name` = s.AppName, Service = s.Service, Type = s.serviceType, reqs, fails, failRate
-| sort failRate desc
-| limit 30
+| summarize services = count(), withTraffic = countIf(reqs > 0), withFailures = countIf(fails > 0)
 
-
-R
+Check B: Which lookup filter drops the rows?
+fetch dt.entity.service
+| fields id, Service = entity.name, tags
+| expand tag = tags
+| fieldsAdd tag = toString(tag)
+| summarize apmids = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
+                       else: if(contains(tag, "APPID:"), splitString(tag, "APPID:")[1]))),
+            by:{id, Service}
+| fieldsAdd apmidCount = arraySize(apmids), apmid = apmids[0]
+| filter in(apmid, array($ClaimsApps))
+| summarize services = count(), single = countIf(apmidCount == 1), multi = countIf(apmidCount > 1)
