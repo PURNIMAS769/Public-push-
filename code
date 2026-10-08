@@ -1,10 +1,15 @@
-Tile 5.1a: PostgreSQL not reporting
-
-Run this on its own first.
-
-timeseries up = avg(postgres.uptime), by:{device.name, device}, from:-24h, interval:5m
-| fieldsAdd reportingNow = arraySize(arrayRemoveNulls(arraySlice(up, from:-3))) > 0
-| filter reportingNow == false
+timeseries st = max(`sql-server.databases.state`),
+           by:{device.name, database}, from:-7d, interval:1h
+| fieldsAdd stClean  = arrayRemoveNulls(st)
+| fieldsAdd nowState = arrayLast(stClean),
+            minState = arrayMin(stClean)
+| filter nowState > 0
+| fieldsAdd stateName = if(nowState == 6, "OFFLINE",
+                        else: if(nowState == 5, "EMERGENCY",
+                        else: if(nowState == 4, "SUSPECT",
+                        else: if(nowState == 3, "RECOVERY_PENDING",
+                        else: if(nowState == 2, "RECOVERING", else: "RESTORING")))))
+| fieldsAdd history = if(minState == 0, "1 - Recent change", else: "2 - Long-term")
 | fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
@@ -17,37 +22,11 @@ timeseries up = avg(postgres.uptime), by:{device.name, device}, from:-24h, inter
     | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | filter isNotNull(h.claimsApps)
-| fieldsAdd technology = "PostgreSQL",
-            status     = "🔴 Not reporting",
-            apps       = arrayToString(h.claimsApps, delimiter:", ")
-| fields status, technology, server = device.name, database = device, apps
-| sort server asc
+| fieldsAdd apps = arrayToString(h.claimsApps, delimiter:", ")
+| fields history, stateName, server = device.name, database, apps
+| sort history asc, stateName asc, server asc
 
 
-Expected result: probably no records, which is the healthy state. To confirm the query works, temporarily delete the filter reportingNow == false line. You should then see about 145 rows, matching the H1 result.
+Run it over the Last 7 days or longer. The query sets the window itself with from:-7d.
 
-Tile 5.1b: MSSQL databases not ONLINE
-timeseries st = max(`sql-server.databases.state`, scalar: true),
-           by:{device.name, database, database.state}, from:-15m
-| filter isNotNull(st) and database.state != "ONLINE"
-| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
-| lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($ClaimsApps))
-    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| filter isNotNull(h.claimsApps)
-| fieldsAdd technology = "MSSQL",
-            status = if(database.state == "RESTORING" or database.state == "RECOVERING",
-                        concat("🟠 ", database.state), else: concat("🔴 ", database.state)),
-            apps = arrayToString(h.claimsApps, delimiter:", ")
-| fields status, technology, server = device.name, database, apps
-| sort status asc, server asc
-
-
-W
+Wha
