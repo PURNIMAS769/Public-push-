@@ -1,44 +1,9 @@
-Checks to run
+C1: Which health and state values exist on Claims servers
 
-R1: Replication and Always On metric keys
-
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "postgres.replication")
-      or startsWith(metric.key, "postgres.wal_receiver")
-      or startsWith(metric.key, "sql-server.always-on")
-| summarize series = count(), by:{metric.key}
-| sort metric.key asc
-
-
-This gives the full list with series counts, so we pick the right lag and health metrics.
-
-R2: Dimensions
-
-fetch metric.series, from:-2h
-| filter in(metric.key, {"postgres.replication.replay_lag",
-                         "sql-server.always-on.ag.synchronizationHealth",
-                         "sql-server.always-on.db.synchronizationHealth"})
-| dedup metric.key
-
-
-Scroll right and send me the dimension columns. I'm looking for a host or server name, an availability group name, a replica name and a database name.
-
-R3: Units and healthy values. From the metric browser, send me the Unit | Type box for postgres.replication.replay_lag and sql-server.always-on.ag.synchronizationHealth. I need to know the lag unit and which health value means healthy. I don't want to assume it.
-
-R4: Do the Always On Davis problems involve Claims servers?
-
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter dt.davis.is_duplicate == false
-| filter contains(lower(event.name), "synchroniz")
-| expand eid = affected_entity_ids
-| lookup [ fetch `dt.entity.sql:sql_server_availability_group` | fields id, tags ],
-         sourceField: eid, lookupField: id, prefix: "ag."
-| filter isNotNull(ag.id)
-| expand tag = ag.tags
-| filter startsWith(tag, "Instance_Name:MSSQLSERVER@")
-| fieldsAdd hostShort = lower(splitString(tag, "@")[1])
+timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true),
+           by:{device.name, availability.database.synchronization_health,
+               availability.database.synchronization_state, availability.database.state}, from:-30m
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
     | fields hostName = entity.name, tags
@@ -49,6 +14,16 @@ fetch dt.davis.problems, from:-30d
     | filter in(apmid, array($ClaimsApps))
     | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| summarize problems = countDistinctExact(display_id),
-            active   = countDistinctExact(if(event.status == "ACTIVE", display_id)),
-            onClaimsHosts = countDistinctExact(if(isNotNull(h.claimsApps), display_id))
+| filter isNotNull(h.claimsApps)
+| summarize databases = count(),
+            by:{availability.database.synchronization_health,
+                availability.database.synchronization_state,
+                availability.database.state}
+
+
+
+C2: normal lag values (run first)
+timeseries lag = avg(postgres.replication.replay_lag, scalar: true),
+           by:{device.name, client_hostname, sync_state, state}, from:-2h
+| summarize links = count(), minLag = min(lag), avgLag = round(avg(lag), decimals:3),
+            maxLag = max(lag), by:{state}
