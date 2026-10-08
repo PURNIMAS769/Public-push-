@@ -1,22 +1,33 @@
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| filter event.name == "Deployment stuck" or event.name == "No pod ready"
-| expand tag = entity_tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| dedup display_id
-| expand dt.entity.cloud_application = affected_entity_ids
-| filter startsWith(dt.entity.cloud_application, "CLOUD_APPLICATION-")
-| lookup [ fetch dt.entity.cloud_application | fields id, wName = entity.name ],
-         sourceField: dt.entity.cloud_application, lookupField: id, prefix: "w."
-| fieldsAdd status      = "🔴 Critical",
-            appWorkload = concat(apmid, " | ", coalesce(w.wName, dt.entity.cloud_application)),
-            openFor     = now() - event.start
-| fields status, appWorkload, event.name, display_id, openFor, dt.entity.cloud_application
-| sort openFor desc
+Tile 7.4: Pod restart increases
 
+Restarts during the selected period only, ranked highest first. Set the tile timeframe to Last 24 hours.
 
-Settings
+timeseries r = sum(dt.kubernetes.container.restarts),
+           by:{k8s.cluster.name, k8s.namespace.name, k8s.workload.name}
+| filter startsWith(k8s.namespace.name, "app")
+| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)),
+            restarts = arraySum(r)
+| filter in(apmid, array($ClaimsApps)) and restarts >= 10
+| fieldsAdd status = if(restarts >= 50, "🔴 Critical", else: "🟠 Warning"),
+            rank   = if(restarts >= 50, 1, else: 2)
+| fieldsAdd appWorkload = concat(apmid, " | ", k8s.namespace.name, " : ", k8s.workload.name)
+| fields status, appWorkload, cluster = k8s.cluster.name, restarts = round(restarts, decimals:0), rank
+| sort rank asc, restarts desc
+| fieldsRemove rank
+
+Tile 7.5: OOMKilled workloads
+
+Workloads killed for exceeding their memory limit. Set the tile timeframe to Last 24 hours.
+
+timeseries o = sum(dt.kubernetes.container.oom_kills),
+           by:{k8s.cluster.name, k8s.namespace.name, k8s.workload.name}
+| filter startsWith(k8s.namespace.name, "app")
+| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)),
+            oomKills = arraySum(o)
+| filter in(apmid, array($ClaimsApps)) and oomKills > 0
+| fieldsAdd status = if(oomKills >= 10, "🔴 Critical", else: "🟠 Warning"),
+            rank   = if(oomKills >= 10, 1, else: 2)
+| fieldsAdd appWorkload = concat(apmid, " | ", k8s.namespace.name, " : ", k8s.workload.name)
+| fields status, appWorkload, cluster = k8s.cluster.name, oomKills = round(oomKills, decimals:0), rank
+| sort rank asc, oomKills desc
+| fieldsRemove rank
