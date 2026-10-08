@@ -1,18 +1,30 @@
-his tells us where to set the threshold, so the tile doesn't end up empty or full of noise.
-
-timeseries gc = avg(dt.runtime.jvm.gc.suspension_time, scalar: true),
-           by:{dt.entity.process_group_instance}, from:-2h
+timeseries gc = avg(dt.runtime.jvm.gc.suspension_time),
+           by:{dt.entity.process_group_instance}
+| fieldsAdd gcSuspension = round(arrayAvg(gc), decimals:2)
+| filter gcSuspension >= 5
 | lookup [
     fetch dt.entity.process_group_instance
-    | fields id, tags
+    | fieldsAdd hostId = belongs_to[dt.entity.host]
+    | fields id, Process = entity.name, hostId, tags
     | expand tag = tags
-    | filter startsWith(tag, "APMID:")
-    | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
+    | filter contains(tag, "APMID:") or contains(tag, "APPName:")
+    | summarize apmids   = arrayRemoveNulls(collectDistinct(
+                              if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1]))),
+                appNames = arrayRemoveNulls(collectDistinct(
+                              if(contains(tag, "APPName:"), splitString(tag, "APPName:")[1]))),
+                by:{id, Process, hostId}
     | filter arraySize(apmids) == 1
-    | fieldsAdd apmid = apmids[0]
+    | fieldsAdd apmid = apmids[0], AppName = coalesce(appNames[0], apmids[0])
+    | filter in(apmid, array($ClaimsApps))
+    | fields id, Process, hostId, AppName, apmid
   ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
-| filter in(p.apmid, array($ClaimsApps))
-| summarize jvms = count(),
-            `gc >= 1`  = countIf(gc >= 1),
-            `gc >= 5`  = countIf(gc >= 5),
-            `gc >= 10` = countIf(gc >= 10)
+| filter isNotNull(p.id)
+| lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
+         sourceField: p.hostId, lookupField: id, prefix: "h."
+| fieldsAdd risk = if(gcSuspension >= 10, "🔴 Critical", else: "🟠 Warning"),
+            `App | Process` = concat(p.AppName, " | ", p.Process)
+| fields risk, `App | Process`, apmid = p.apmid, Host = h.Host, gcSuspension, dt.entity.process_group_instance
+| sort gcSuspension desc
+
+
+Settings:
