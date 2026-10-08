@@ -1,19 +1,4 @@
-G1: How many Claims APMIDs are on Oracle and DB2 entities? Run it twice. The second time, change the first line to fetch `dt.entity.sql:db2_instance`.
-
-fetch `dt.entity.sql:com_dynatrace_extension_sql-oracle_instance`
-| fields id, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| fieldsAdd isClaims = in(apmid, array($ClaimsApps))
-| summarize instancesWithApmid = countDistinctExact(id),
-            claimsInstances    = countDistinctExact(if(isClaims, id)),
-            claimsApps         = countDistinctExact(if(isClaims, apmid)),
-            allApps            = countDistinctExact(apmid)
-
-
-G2: Can MSSQL availability groups be matched to Claims hosts by name?
-
+Fixed G2: MSSQL availability groups
 fetch `dt.entity.sql:sql_server_availability_group`
 | fields id, tags
 | expand tag = tags
@@ -26,27 +11,49 @@ fetch `dt.entity.sql:sql_server_availability_group`
     | filter startsWith(t, "APMID:")
     | fieldsAdd apmid = splitString(t, "APMID:")[1],
                 hostShort = lower(splitString(hostName, ".")[0])
-    | summarize claimsApps = arrayRemoveNulls(collectDistinct(if(in(apmid, array($ClaimsApps)), apmid))),
-                hostFound = true, by:{hostShort}
+    | filter in(apmid, array($ClaimsApps))
+    | summarize claimsApps = collectDistinct(apmid), hostRows = count(), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | summarize agsTotal         = countDistinctExact(id),
-            agsMatchedToHost = countDistinctExact(if(h.hostFound == true, id)),
-            agsOnClaimsHosts = countDistinctExact(if(h.hostFound == true and arraySize(h.claimsApps) > 0, id))
+            agsMatchedToHost = countDistinctExact(if(isNotNull(h.hostRows), id))
 
 
-I haven't tested this. If lookup rejects the true field, replace it with hostFound = count().
+I pre-filtered the lookup to Claims apps, so agsMatchedToHost is the number of availability groups on a Claims host. If agsTotal is much larger, most availability groups don't belong to Claims.
 
-G3: Which entity do the PostgreSQL metrics sit on?
+New checks
 
-fetch metric.series, from:-2h
-| filter in(metric.key, {"postgres.uptime", "postgres.recovery.state"})
-| dedup metric.key
+H1: PostgreSQL instances on Claims hosts
+
+timeseries up = avg(postgres.uptime, scalar: true), by:{device.name, device}, from:-2h
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
+| lookup [
+    fetch dt.entity.host
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($ClaimsApps))
+    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| summarize pgInstances   = count(),
+            onClaimsHosts = countIf(isNotNull(h.claimsApps)),
+            claimsApps    = countDistinctExact(h.claimsApps)
 
 
-Scroll right and tell me which dimension columns appear. I'm looking for a process group instance, host or custom device ID.
+If onClaimsHosts is high, PostgreSQL health can be linked to apps through the host. To list the rows, replace the last summarize with | fields device, up, h.claimsApps | sort device asc.
 
-G4: What are the z/OS DB2 subsystems called?
+H2: Do the z/OS DB2 processes carry Claims APMIDs?
 
-fetch metric.series, from:-2h
-| filter metric.key == "dt.process.zos.db2.num_failed_connections"
-| limit 5
+timeseries fails = sum(dt.process.zos.db2.num_failed_connections, scalar: true),
+           by:{dt.entity.process_group_instance}, from:-2h
+| lookup [
+    fetch dt.entity.process_group_instance
+    | fields id, pgiName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1]
+  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
+| summarize pgisWithApmid = countDistinctExact(dt.entity.process_group_instance),
+            claimsPgis    = countDistinctExact(if(in(p.apmid, array($ClaimsApps)), dt.entity.process_group_instance)),
+            claimsApps    = countDistinctExact(if(in(p.apmid, array($ClaimsApps)), p.apmid))
