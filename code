@@ -1,1 +1,20 @@
-MSSQL Always On – Database Synchronization
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| filter contains(lower(event.name), "failed database connect")
+| expand tag = entity_tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| expand dt.entity.service = affected_entity_ids
+| filter startsWith(dt.entity.service, "SERVICE-")
+| lookup [ fetch dt.entity.service | fields id, svcName = entity.name ],
+         sourceField: dt.entity.service, lookupField: id, prefix: "s."
+| fieldsAdd appService = concat(apmid, " | ", coalesce(s.svcName, dt.entity.service)),
+            openFor    = now() - event.start
+| fields appService, display_id, event.name, openFor, dt.entity.service
+| sort openFor desc
+
+
+I keep dt.enti
