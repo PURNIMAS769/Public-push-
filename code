@@ -1,28 +1,4 @@
-Fixed G2: MSSQL availability groups
-fetch `dt.entity.sql:sql_server_availability_group`
-| fields id, tags
-| expand tag = tags
-| filter startsWith(tag, "Instance_Name:MSSQLSERVER@")
-| fieldsAdd hostShort = lower(splitString(tag, "@")[1])
-| lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($ClaimsApps))
-    | summarize claimsApps = collectDistinct(apmid), hostRows = count(), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| summarize agsTotal         = countDistinctExact(id),
-            agsMatchedToHost = countDistinctExact(if(isNotNull(h.hostRows), id))
-
-
-I pre-filtered the lookup to Claims apps, so agsMatchedToHost is the number of availability groups on a Claims host. If agsTotal is much larger, most availability groups don't belong to Claims.
-
-New checks
-
-H1: PostgreSQL instances on Claims hosts
+P1: PostgreSQL instances per Claims app (a corrected count)
 
 timeseries up = avg(postgres.uptime, scalar: true), by:{device.name, device}, from:-2h
 | fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
@@ -36,24 +12,28 @@ timeseries up = avg(postgres.uptime, scalar: true), by:{device.name, device}, fr
     | filter in(apmid, array($ClaimsApps))
     | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| summarize pgInstances   = count(),
-            onClaimsHosts = countIf(isNotNull(h.claimsApps)),
-            claimsApps    = countDistinctExact(h.claimsApps)
+| filter isNotNull(h.claimsApps)
+| expand apmid = h.claimsApps
+| summarize pgInstances = countDistinctExact(device),
+            pgHosts     = countDistinctExact(device.name),
+            by:{apmid}
+| sort pgInstances desc
 
 
-If onClaimsHosts is high, PostgreSQL health can be linked to apps through the host. To list the rows, replace the last summarize with | fields device, up, h.claimsApps | sort device asc.
+What to check: the number of rows is the real count of apps (the 17 may change). If many apps have the same pgInstances, those hosts are shared between apps.
 
-H2: Do the z/OS DB2 processes carry Claims APMIDs?
+P2: Which PostgreSQL metrics exist
 
-timeseries fails = sum(dt.process.zos.db2.num_failed_connections, scalar: true),
-           by:{dt.entity.process_group_instance}, from:-2h
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fields id, pgiName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1]
-  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
-| summarize pgisWithApmid = countDistinctExact(dt.entity.process_group_instance),
-            claimsPgis    = countDistinctExact(if(in(p.apmid, array($ClaimsApps)), dt.entity.process_group_instance)),
-            claimsApps    = countDistinctExact(if(in(p.apmid, array($ClaimsApps)), p.apmid))
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "postgres.")
+| summarize series = count(), by:{metric.key}
+| sort series desc
+
+
+This shows whether there are metrics for replication, connections, deadlocks and database size. I haven't seen the full list.
+
+M1: How MSSQL metrics link to a host
+
+fetch metric.series, from:-2h
+| filter in(metric.key, {"sql-server.uptime", "sql-server.databases.state", "sql-server.backup.age"})
+| dedup metric.key
