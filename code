@@ -1,8 +1,7 @@
-ile 1: PostgreSQL health by Claims app
-timeseries up = avg(postgres.uptime), by:{device.name, device}, from:-24h, interval:5m
-| fieldsAdd notReporting = arraySize(arrayRemoveNulls(arraySlice(up, from:-3))) == 0,
-            hostShort    = lower(splitString(device.name, ".")[0])
-// DB server -> Claims apps (through the host APMID tag)
+timeseries st = max(`sql-server.databases.state`, scalar: true),
+           by:{device.name, database}, from:-30m
+| filter isNotNull(st)
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
     | fields hostName = entity.name, tags
@@ -14,126 +13,20 @@ timeseries up = avg(postgres.uptime), by:{device.name, device}, from:-24h, inter
     | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | filter isNotNull(h.claimsApps)
-// active Davis problems on the DB server (host or PostgreSQL instance)
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | sort timestamp desc
-    | dedup display_id
-    | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | expand eid = affected_entity_ids
-    | lookup [ fetch dt.entity.host | fields id, hName = entity.name ],
-             sourceField: eid, lookupField: id, prefix: "sh."
-    | lookup [ fetch `dt.entity.sql:postgres_instance` | fields id, iName = entity.name ],
-             sourceField: eid, lookupField: id, prefix: "si."
-    | fieldsAdd srvName = coalesce(sh.hName, si.iName)
-    | filter isNotNull(srvName)
-    | fieldsAdd hostShort = lower(splitString(srvName, ".")[0])
-    | summarize problems = countDistinctExact(display_id), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "p."
-| fieldsAdd hasProblem = coalesce(p.problems, 0) > 0
 | expand apmid = h.claimsApps
-| summarize databases = countDistinctExact(device),
-            badDbs    = countDistinctExact(if(notReporting or hasProblem, device)),
-            by:{apmid}
-| fieldsAdd Status = if(badDbs > 0, "Unhealthy", else: "Healthy")
-| summarize `Total Apps` = count(),
-            Healthy      = countIf(Status == "Healthy"),
-            Unhealthy    = countIf(Status == "Unhealthy")
+| fieldsAdd state = if(st == 0, "ONLINE",
+                    else: if(st == 1, "RESTORING",
+                    else: if(st == 2, "RECOVERING",
+                    else: if(st == 3, "RECOVERY_PENDING",
+                    else: if(st == 4, "SUSPECT",
+                    else: if(st == 5, "EMERGENCY", else: "OFFLINE")))))),
+            status = if(st == 0, "🟢 Healthy",
+                     else: if(st <= 3, "🟠 Warning", else: "🔴 Critical")),
+            rank   = if(st == 0, 3, else: if(st <= 3, 2, else: 1))
+| fieldsAdd appServerDb = concat(apmid, " | ", device.name, " : ", database)
+| fields status, state, appServerDb, rank
+| sort rank asc, appServerDb asc
+| fieldsRemove rank
 
 
-Expected result: Total Apps should be about 13, matching the P1 check. To see each app's database count, replace the last summarize with | fields apmid, databases, badDbs, Status | sort badDbs desc.
-
-Tile 2: MSSQL health by Claims app
-
-This works at database level, using sql-server.databases.state as the "is it reporting" signal. Offline databases still report their state, so they aren't treated as not reporting. Long-term OFFLINE databases are therefore left out here. They're already covered by the 5.1c cleanup count.
-
-timeseries st = avg(`sql-server.databases.state`), by:{device.name, database}, from:-24h, interval:5m
-| fieldsAdd notReporting = arraySize(arrayRemoveNulls(arraySlice(st, from:-3))) == 0,
-            hostShort    = lower(splitString(device.name, ".")[0])
-| lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($ClaimsApps))
-    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| filter isNotNull(h.claimsApps)
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | sort timestamp desc
-    | dedup display_id
-    | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | expand eid = affected_entity_ids
-    | lookup [ fetch dt.entity.host | fields id, hName = entity.name ],
-             sourceField: eid, lookupField: id, prefix: "sh."
-    | lookup [ fetch `dt.entity.sql:sql_server_instance` | fields id, iName = entity.name ],
-             sourceField: eid, lookupField: id, prefix: "si."
-    | fieldsAdd srvName = coalesce(sh.hName, si.iName)
-    | filter isNotNull(srvName)
-    | fieldsAdd hostShort = lower(splitString(srvName, ".")[0])
-    | summarize problems = countDistinctExact(display_id), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "p."
-| fieldsAdd hasProblem = coalesce(p.problems, 0) > 0
-| expand apmid = h.claimsApps
-| summarize databases = countDistinctExact(concat(device.name, "|", database)),
-            badDbs    = countDistinctExact(if(notReporting or hasProblem, concat(device.name, "|", database))),
-            by:{apmid}
-| fieldsAdd Status = if(badDbs > 0, "Unhealthy", else: "Healthy")
-| summarize `Total Apps` = count(),
-            Healthy      = countIf(Status == "Healthy"),
-            Unhealthy    = countIf(Status == "Unhealthy")
-
-Tile 3: Open problem analysis on DB servers
-
-This is the same analysis format we used earlier, one row per active problem. It lists problems raised on a PostgreSQL or MSSQL server that belongs to a Claims app. It shows the affected entity types, so you can tell whether a problem is on the host or on the database instance.
-
-Visual: Table. Under No data, set the message to "No active problems on Claims DB servers".
-
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| expand eid = affected_entity_ids
-| lookup [ fetch dt.entity.host | fields id, hName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "sh."
-| lookup [ fetch `dt.entity.sql:postgres_instance` | fields id, pName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "sp."
-| lookup [ fetch `dt.entity.sql:sql_server_instance` | fields id, mName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "sm."
-| fieldsAdd srvName = coalesce(sh.hName, sp.pName, sm.mName)
-| filter isNotNull(srvName)
-| fieldsAdd hostShort = lower(splitString(srvName, ".")[0])
-| lookup [
-    timeseries a = avg(postgres.uptime), by:{device.name}, from:-24h, interval:1h
-    | fieldsAdd hostShort = lower(splitString(device.name, ".")[0]), technology = "PostgreSQL"
-    | fields hostShort, technology
-    | append [
-        timeseries b = avg(`sql-server.uptime`), by:{device.name}, from:-24h, interval:1h
-        | fieldsAdd hostShort = lower(splitString(device.name, ".")[0]), technology = "MSSQL"
-        | fields hostShort, technology
-      ]
-    | summarize technologies = collectDistinct(technology), by:{hostShort}
-    | lookup [
-        fetch dt.entity.host
-        | fields hostName = entity.name, tags
-        | expand t = tags
-        | filter startsWith(t, "APMID:")
-        | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                    hostShort = lower(splitString(hostName, ".")[0])
-        | filter in(apmid, array($ClaimsApps))
-        | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
-      ], sourceField: hostShort, lookupField: hostShort, prefix: "c."
-    | filter isNotNull(c.claimsApps)
-    | fields hostShort, technologies, claimsApps = c.claimsApps
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "d."
-| filter isNotNull(d.technologies)
-| fieldsAdd technology = arrayToString(d.technologies, delimiter:", "),
-            apps       = arrayToString(d.claimsApps, delimiter:", "),
-            entityTypes = toString(affected_entity_types),
-            openFor    = now() - event.start,
-            dt.entity.host = if(startsWith(eid, "HOST-"), eid)
-| fields technology, server = srvName, apps, display_id, event.name, event.category, entityTypes, openFor, dt.entity.host
-| sort openFor desc
+Status rules:
