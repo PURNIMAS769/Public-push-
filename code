@@ -1,4 +1,33 @@
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "sql-server.") and contains(metric.key, "backup")
-| summarize series = count(), by:{metric.key} 
-| sort metric.key asc
+Draft tile: backup freshness (full backups only)
+
+This uses the same format as the database state tile. The limits are placeholders until you confirm your policy: Warning over 24h, Critical over 7 days. I haven't run it.
+
+timeseries age = max(`sql-server.databases.backup.age`, scalar: true),
+           by:{device.name, database, backup_type}, from:-2h
+| filter isNotNull(age)
+| filter contains(lower(backup_type), "full") or lower(backup_type) == "database" or backup_type == "D"
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
+| lookup [
+    fetch dt.entity.host
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($ClaimsApps))
+    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| filter isNotNull(h.claimsApps)
+| expand apmid = h.claimsApps
+| fieldsAdd ageHrs = round(age / 60, decimals:1),
+            ageDays = round(age / 1440, decimals:1),
+            status = if(age > 10080, "🔴 Critical",
+                     else: if(age > 1440, "🟠 Warning", else: "🟢 Healthy")),
+            rank = if(age > 10080, 1, else: if(age > 1440, 2, else: 3))
+| fieldsAdd appServerDb = concat(apmid, " | ", device.name, " : ", database)
+| fields status, appServerDb, ageHrs, ageDays, rank
+| sort rank asc, ageHrs desc
+| fieldsRemove rank
+
+
+Things to know:
