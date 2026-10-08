@@ -1,8 +1,10 @@
-Next checks (no tile code yet)
+Tile 5.1a: PostgreSQL not reporting
 
-Check 1: do MSSQL servers match Claims hosts?
+Run this on its own first.
 
-timeseries up = avg(`sql-server.uptime`, scalar: true), by:{device.name, instance}, from:-2h
+timeseries up = avg(postgres.uptime), by:{device.name, device}, from:-24h, interval:5m
+| fieldsAdd reportingNow = arraySize(arrayRemoveNulls(arraySlice(up, from:-3))) > 0
+| filter reportingNow == false
 | fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
@@ -14,21 +16,38 @@ timeseries up = avg(`sql-server.uptime`, scalar: true), by:{device.name, instanc
     | filter in(apmid, array($ClaimsApps))
     | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| summarize sqlServers    = countDistinctExact(device.name),
-            onClaimsHosts = countDistinctExact(if(isNotNull(h.claimsApps), device.name))
+| filter isNotNull(h.claimsApps)
+| fieldsAdd technology = "PostgreSQL",
+            status     = "🔴 Not reporting",
+            apps       = arrayToString(h.claimsApps, delimiter:", ")
+| fields status, technology, server = device.name, database = device, apps
+| sort server asc
 
 
-If I've mis-quoted the hyphenated metric name, tell me the error.
+Expected result: probably no records, which is the healthy state. To confirm the query works, temporarily delete the filter reportingNow == false line. You should then see about 145 rows, matching the H1 result.
 
-Check 2: what the MSSQL state values mean
+Tile 5.1b: MSSQL databases not ONLINE
+timeseries st = max(`sql-server.databases.state`, scalar: true),
+           by:{device.name, database, database.state}, from:-15m
+| filter isNotNull(st) and database.state != "ONLINE"
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
+| lookup [
+    fetch dt.entity.host
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($ClaimsApps))
+    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| filter isNotNull(h.claimsApps)
+| fieldsAdd technology = "MSSQL",
+            status = if(database.state == "RESTORING" or database.state == "RECOVERING",
+                        concat("🟠 ", database.state), else: concat("🔴 ", database.state)),
+            apps = arrayToString(h.claimsApps, delimiter:", ")
+| fields status, technology, server = device.name, database, apps
+| sort status asc, server asc
 
-timeseries st = avg(`sql-server.databases.state`, scalar: true), by:{database.state}, from:-2h
-| summarize series = count(), minValue = min(st), maxValue = max(st), by:{database.state}
 
-
-This shows whether the value is just a code and database.state is the real signal.
-
-Check 3: PostgreSQL primary vs standby
-
-timeseries r = avg(postgres.recovery.state, scalar: true), by:{device.name}, from:-2h
-| summarize hosts = count(), by:{r}
+W
