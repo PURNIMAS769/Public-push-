@@ -1,7 +1,9 @@
-timeseries {pct   = max(ibmmq.queue.depth_percent, scalar: true),
+with ID columns are the same as in 6.1 and 6.2.
+
+timeseries {age   = max(ibmmq.queue.oldest_message, scalar: true),
             depth = max(ibmmq.queue.depth, scalar: true)},
            by:{queue_manager, queue_name}, from:-30m
-| filter pct >= 80
+| filter isNotNull(age) and age >= 300 and coalesce(depth, 0) > 0
 // app -> queue (from MQ alert history)
 | lookup [
     fetch dt.davis.problems, from:-90d
@@ -26,27 +28,23 @@ timeseries {pct   = max(ibmmq.queue.depth_percent, scalar: true),
                 hostId = takeFirst(dt.entity.host),
                 by:{queue_manager}
   ], sourceField: queue_manager, lookupField: queue_manager, prefix: "a."
-// queue manager entity ID
+// entity IDs for Open with
 | lookup [
     fetch `dt.entity.ibmmq:queue_manager`
     | fields qmEntityId = id, qmEntityName = entity.name
   ], sourceField: queue_manager, lookupField: qmEntityName, prefix: "e."
-// queue entity ID
 | lookup [
     fetch `dt.entity.ibmmq:local_queue`
     | fields lqId = id, lqName = entity.name
   ], sourceField: queue_name, lookupField: lqName, prefix: "l."
-| fieldsAdd depthPct = round(pct, decimals:1),
-            status   = if(pct >= 95, "🔴 Critical", else: "🟠 Warning"),
-            rank     = if(pct >= 95, 1, else: 2)
+| fieldsAdd ageMin = round(age / 60, decimals:1),
+            status = if(age >= 1800, "🔴 Critical", else: "🟠 Warning"),
+            rank   = if(age >= 1800, 1, else: 2)
 | fieldsAdd appQmQueue = concat(apmid, " | ", coalesce(a.server, "host n/a"), " : ", queue_manager, " / ", queue_name)
-| fields status, appQmQueue, depthPct, depth = round(depth, decimals:0),
+| fields status, appQmQueue, ageMin, depth = round(depth, decimals:0),
          `dt.entity.ibmmq:queue_manager` = e.qmEntityId,
          `dt.entity.ibmmq:local_queue`   = l.lqId,
          dt.entity.host = a.hostId,
          rank
-| sort rank asc, depthPct desc
+| sort rank asc, ageMin desc
 | fieldsRemove rank
-
-
-Settings
