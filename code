@@ -1,69 +1,70 @@
-Discovery
+Checks to run
 
-K1: Which Kubernetes metrics exist
-
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "dt.kubernetes")
-| summarize series = count(), by:{metric.key}
-| sort metric.key asc
-
-
-This confirms the keys for replicas, throttling, OOM and volumes, and shows which have enough series to build on. If the list is long, send it in two screenshots.
-
-K2: Dimensions on the candidate metrics
+L1: Workload condition fields. This is the one I need most.
 
 fetch metric.series, from:-2h
-| filter contains(metric.key, "throttl") or contains(metric.key, "conditions")
-      or contains(metric.key, "pods") or contains(metric.key, "oom")
-      or contains(metric.key, "volume") or contains(metric.key, "restarts")
-| dedup metric.key
-| limit 20
+| filter metric.key == "dt.kubernetes.workload.conditions"
+| limit 5
 
 
-Scroll right on each record. I'm looking for k8s.cluster.name, k8s.namespace.name, k8s.workload.name and k8s.pod.name. That tells me whether a tile can show the workload and pod, or only the namespace. Also send the Unit and Description for restarts, as I need to know whether it's a count per interval or a running total.
+Scroll right and send me the dimension columns. I'm looking for the condition type, the status, the reason, the namespace and the workload name.
 
-K3: Container problems on Claims apps, and which are active
+L2: Is restarts cumulative or per interval?
+
+timeseries r = sum(dt.kubernetes.container.restarts),
+           by:{k8s.namespace.name, k8s.workload.name, last_exit_code}, from:-24h
+| filter startsWith(k8s.namespace.name, "app")
+| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)),
+            clean = arrayRemoveNulls(r)
+| filter in(apmid, array($ClaimsApps))
+| fieldsAdd first = arrayFirst(clean), last = arrayLast(clean), peak = arrayMax(clean)
+| fields apmid, workload = k8s.workload.name, last_exit_code, first, last, peak
+| sort peak desc
+| limit 15
+
+
+If last equals peak and is at or above first, the metric is a running total. If the values bounce around, it's a per-interval count.
+
+L3: OOM kills on Claims workloads
+
+timeseries o = sum(dt.kubernetes.container.oom_kills),
+           by:{k8s.namespace.name, k8s.workload.name}, from:-7d
+| filter startsWith(k8s.namespace.name, "app")
+| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)), total = arraySum(o)
+| filter in(apmid, array($ClaimsApps)) and total > 0
+| fields apmid, workload = k8s.workload.name, total
+| sort total desc
+
+
+I haven't confirmed that k8s.namespace.name is a dimension on oom_kills. If it errors, send me the dimension list. No rows means no Claims OOM kills in 7 days.
+
+L4: Active "Deployment stuck" problems by app
 
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
-| filter dt.davis.is_duplicate == false
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| filter event.name == "Deployment stuck"
 | expand tag = entity_tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| dedup display_id
-| filter contains(lower(toString(affected_entity_types)), "kubernetes")
-      or contains(lower(toString(affected_entity_types)), "cloud_application")
-      or contains(lower(event.name), "pod") or contains(lower(event.name), "deployment")
-      or contains(lower(event.name), "container") or contains(lower(event.name), "workload")
-      or contains(lower(event.name), "oom") or contains(lower(event.name), "backoff")
-      or contains(lower(event.name), "replica") or contains(lower(event.name), "pending")
-      or contains(lower(event.name), "pvc") or contains(lower(event.name), "volume")
-| summarize problems = count(),
-            active   = countIf(event.status == "ACTIVE"),
-            apps     = countDistinctExact(apmid),
-            types    = collectDistinct(toString(affected_entity_types)),
-            by:{event.name}
-| sort problems desc
+| summarize active = countDistinctExact(display_id),
+            oldest = min(event.start), newest = max(event.start),
+            by:{apmid}
+| sort active desc
 
 
-This shows which container problems actually occur for Claims and which are open now. It also shows which entity types they're raised on, which decides whether the workload can be opened from the tile.
+This shows which apps are affected and how old the problems are. Many non-prod deployments sit stuck for weeks, so a stale problem is a cleanup item, not a new incident. That decides whether 7.1 counts it as Critical or only Warning.
 
-K4: Workload and pod entities, and how they link to namespaces. Run these one at a time and expand one record from each.
+L5: Do Claims namespaces have persistent volumes?
 
-fetch dt.entity.cloud_application
-| limit 3
+timeseries cap = max(dt.kubernetes.persistentvolumeclaim.capacity, scalar: true),
+           by:{k8s.namespace.name}, from:-1h
+| filter startsWith(k8s.namespace.name, "app")
+| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
+| filter in(apmid, array($ClaimsApps))
+| summarize volumes = count(), apps = countDistinctExact(apmid)
 
-fetch dt.entity.cloud_application_instance
-| limit 3
 
-
-Send me the field list. I'm looking for a namespace name or ID, a cluster, tags, and workload type (Deployment, StatefulSet and so on). If a tile can read the namespace from the workload entity, I don't have to parse names.
-
-K5: Do Kubernetes events or OOM signals exist?
-
-fetch events, from:-7d
-| summarize events = count(), by:{event.kind, event.type}
-| sort events desc
-| limit 30
+I haven't confirmed the n
