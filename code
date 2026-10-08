@@ -1,53 +1,44 @@
-Run these four
+1: Which Claims hosts are database servers?
 
-E1: Which DB services do Claims apps use?
-
-fetch dt.entity.service
-| filter serviceType == "DATABASE_SERVICE"
-| fields id, dbService = entity.name, tags
+fetch dt.entity.host
+| fields id, tags
 | expand tag = tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter startsWith(tag, "APMID:") or startsWith(tag, "DB_C:")
+| summarize apmids = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1]))),
+            dbTypes = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "DB_C:"), tag))),
+            by:{id}
+| filter arraySize(dbTypes) > 0
+| expand apmid = apmids
 | filter in(apmid, array($ClaimsApps))
-| summarize apps = countDistinctExact(apmid), by:{dbService}
-| sort apps desc
-| limit 40
+| summarize dbHosts = countDistinctExact(id), by:{apmid, dbTypes}
+| sort dbHosts desc
 
 
-E2: Do DB problems carry Claims APMIDs?
+This shows which Claims apps sit on DB-tagged hosts, and which database type each one uses.
 
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter dt.davis.is_duplicate == false
-| filter contains(lower(event.name), "database") or contains(lower(event.name), "mssql")
-      or contains(lower(event.name), "oracle") or contains(lower(event.name), "db2")
-| expand tag = entity_tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| dedup display_id
-| summarize problems = count(), active = countIf(event.status == "ACTIVE"),
-            apps = countDistinctExact(apmid), by:{event.name}
-| sort problems desc
+F2: Do the database entities carry any tags? Run these one at a time.
+
+fetch `dt.entity.sql:com_dynatrace_extension_sql-oracle_instance`
+| fields id, entity.name, tags
+| limit 20
+
+fetch `dt.entity.sql:db2_instance`
+| fields id, entity.name, tags
+| limit 20
+
+fetch `dt.entity.sql:sql_server_availability_group`
+| fields id, entity.name, tags
 | limit 20
 
 
-If this returns nothing, Option B is out.
+I'm looking for APMID: or Portfolio:Claims in tags. If an entity type name errors, tell me which one. I haven't verified the MSSQL instance type name.
 
-E3: Attributes on a DB service
+F3: Do the extension IPs match Claims host IPs? This is the test for option 3. I haven't confirmed that ipAddress is the right field name on the host entity, so if it errors, send me the error.
 
-fetch dt.entity.service
-| filter serviceType == "DATABASE_SERVICE"
-| limit 3
-
-
-Expand one record and send me the field list. I'm looking for database name, vendor and host or endpoint fields that could connect a service to a DB instance.
-
-E4: z/OS DB2 and PostgreSQL metrics
-
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "dt.process.zos.db2") or contains(lower(metric.key), "postgres")
-| summarize series = count(), by:{metric.key}
-| sort series desc
-| limit 30
+timeseries a = avg(db2.availability, scalar: true), by:{device.address}, from:-2h
+| lookup [
+    fetch dt.entity.host
+    | fields id, hostName = entity.name, ips = ipAddress
+    | expand ip = ips
+  ], sourceField: device.address, lookupField: ip, prefix: "h."
+| summarize extensionIps = count(), matchedToHost = countIf(isNotNull(h.id))
