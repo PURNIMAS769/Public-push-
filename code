@@ -1,70 +1,22 @@
-Checks to run
-
-L1: Workload condition fields. This is the one I need most.
-
-fetch metric.series, from:-2h
-| filter metric.key == "dt.kubernetes.workload.conditions"
-| limit 5
-
-
-Scroll right and send me the dimension columns. I'm looking for the condition type, the status, the reason, the namespace and the workload name.
-
-L2: Is restarts cumulative or per interval?
-
-timeseries r = sum(dt.kubernetes.container.restarts),
-           by:{k8s.namespace.name, k8s.workload.name, last_exit_code}, from:-24h
-| filter startsWith(k8s.namespace.name, "app")
-| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)),
-            clean = arrayRemoveNulls(r)
-| filter in(apmid, array($ClaimsApps))
-| fieldsAdd first = arrayFirst(clean), last = arrayLast(clean), peak = arrayMax(clean)
-| fields apmid, workload = k8s.workload.name, last_exit_code, first, last, peak
-| sort peak desc
-| limit 15
-
-
-If last equals peak and is at or above first, the metric is a running total. If the values bounce around, it's a per-interval count.
-
-L3: OOM kills on Claims workloads
-
-timeseries o = sum(dt.kubernetes.container.oom_kills),
-           by:{k8s.namespace.name, k8s.workload.name}, from:-7d
-| filter startsWith(k8s.namespace.name, "app")
-| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11)), total = arraySum(o)
-| filter in(apmid, array($ClaimsApps)) and total > 0
-| fields apmid, workload = k8s.workload.name, total
-| sort total desc
-
-
-I haven't confirmed that k8s.namespace.name is a dimension on oom_kills. If it errors, send me the dimension list. No rows means no Claims OOM kills in 7 days.
-
-L4: Active "Deployment stuck" problems by app
-
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
 | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| filter event.name == "Deployment stuck"
+| filter event.name == "Deployment stuck" or event.name == "No pod ready"
 | expand tag = entity_tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| summarize active = countDistinctExact(display_id),
-            oldest = min(event.start), newest = max(event.start),
-            by:{apmid}
-| sort active desc
+| dedup display_id
+| expand dt.entity.cloud_application = affected_entity_ids
+| filter startsWith(dt.entity.cloud_application, "CLOUD_APPLICATION-")
+| lookup [ fetch dt.entity.cloud_application | fields id, wName = entity.name ],
+         sourceField: dt.entity.cloud_application, lookupField: id, prefix: "w."
+| fieldsAdd status      = "🔴 Critical",
+            appWorkload = concat(apmid, " | ", coalesce(w.wName, dt.entity.cloud_application)),
+            openFor     = now() - event.start
+| fields status, appWorkload, event.name, display_id, openFor, dt.entity.cloud_application
+| sort openFor desc
 
 
-This shows which apps are affected and how old the problems are. Many non-prod deployments sit stuck for weeks, so a stale problem is a cleanup item, not a new incident. That decides whether 7.1 counts it as Critical or only Warning.
-
-L5: Do Claims namespaces have persistent volumes?
-
-timeseries cap = max(dt.kubernetes.persistentvolumeclaim.capacity, scalar: true),
-           by:{k8s.namespace.name}, from:-1h
-| filter startsWith(k8s.namespace.name, "app")
-| fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
-| filter in(apmid, array($ClaimsApps))
-| summarize volumes = count(), apps = countDistinctExact(apmid)
-
-
-I haven't confirmed the n
+Settings
