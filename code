@@ -1,29 +1,73 @@
-timeseries {lag = avg(postgres.replication.replay_lag), delay = avg(postgres.replication.replay_delay)},
-           by:{device.name, client_hostname, state, sync_state}, from:-2h, interval:5m
-| fieldsAdd lagNow       = arrayLast(arrayRemoveNulls(lag)),
-            delayMB      = round(arrayLast(arrayRemoveNulls(delay)) / 1048576, decimals:1),
-            hostShort    = lower(splitString(device.name, ".")[0]),
-            notStreaming = state != "streaming"
+Discovery
+
+K1: Which MQ metrics exist
+
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "ibmmq")
+| summarize series = count(), by:{metric.key}
+| sort metric.key asc
+
+
+This confirms the exact keys and shows which ones have enough series to build on. Look for anything about publish/subscribe or filesystems, because 6.7 and 6.8 depend on it.
+
+K2: Dimensions on the main metrics
+
+fetch metric.series, from:-2h
+| filter in(metric.key, {"ibmmq.queue_manager.availability", "ibmmq.queue.depth",
+                         "ibmmq.queue.oldest_message", "ibmmq.channel.status",
+                         "ibmmq.queue_manager.dlq_depth"})
+| dedup metric.key
+
+
+Scroll right and send me the dimension columns. I need to know whether channel metrics have a channel name, a connection name and a queue manager. Any key that doesn't exist won't return a row.
+
+K3: The Claims app → queue manager map, as a standalone list
+
+fetch dt.davis.problems, from:-90d
+| sort timestamp desc
+| dedup display_id
+| filter contains(event.name, "IBMMQ_APP")
+| fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
+| filter in(apmid, array($ClaimsApps))
+| expand eid = affected_entity_ids
+| lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "lq."
+| filter isNotNull(lq.qName)
+| summarize alerts = count(), by:{apmid, queueName = lq.qName}
 | lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($ClaimsApps))
-    | summarize claimsApps = collectDistinct(apmid), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| filter isNotNull(h.claimsApps)
-| expand apmid = h.claimsApps
-| fieldsAdd status = if(notStreaming or coalesce(lagNow, 0) > 300, "🔴 Critical",
-                     else: if(coalesce(lagNow, 0) > 30, "🟠 Warning", else: "🟢 Healthy")),
-            rank   = if(notStreaming or coalesce(lagNow, 0) > 300, 1,
-                     else: if(coalesce(lagNow, 0) > 30, 2, else: 3))
-| fieldsAdd appLink = concat(apmid, " | ", device.name, " → ", client_hostname)
-| fields status, appLink, state, sync_state, lagSec = round(lagNow, decimals:2), delayMB, rank
-| sort rank asc, lagSec desc
-| fieldsRemove rank
+    timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
+    | summarize qms = collectDistinct(queue_manager), by:{queue_name}
+  ], sourceField: queueName, lookupField: queue_name, prefix: "m."
+| expand qm = m.qms
+| summarize queues = countDistinctExact(queueName),
+            qms    = arrayRemoveNulls(collectDistinct(qm)),
+            by:{apmid}
+| sort apmid asc
 
 
-Rules:
+This is the validated mapping from Section 2, kept as a list so we can see which queue managers each app uses. Every Section 6 tile will start from it.
+
+K4: What are the CLM queue managers?
+
+timeseries a = avg(ibmmq.queue_manager.availability, scalar: true),
+           by:{queue_manager}, from:-2h
+| filter contains(lower(queue_manager), "clm")
+| fields queue_manager, availability = a
+| sort queue_manager asc
+
+
+This shows whether the Claims-looking queue managers report availability at all. If they do, we can decide whether to add them as a portfolio-level group.
+
+K5: Active and recent MQ problem types
+
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter dt.davis.is_duplicate == false
+| filter contains(event.name, "IBMMQ_APP") or contains(lower(event.name), "queue manager")
+      or contains(lower(event.name), "mq")
+| summarize problems = count(),
+            active   = countIf(event.status == "ACTIVE"),
+            sample   = takeFirst(event.name),
+            by:{event.category}
+| sort problems desc
