@@ -1,57 +1,69 @@
-timeseries s = max(ibmmq.channel.status),
-           by:{queue_manager, channel_name, channel_type, channel_status},
-           from:-15m, interval:1m
-// keep only the status each channel is reporting now (not an old status from earlier in the window)
-| filter arraySize(arrayRemoveNulls(arraySlice(s, from:-3))) > 0
-| filter in(channel_status, {"Stopped", "Retrying", "Paused", "Binding", "Stopping"})
-// app -> queue managers (90d alert history -> queue depth metric)
-| lookup [
-    fetch dt.davis.problems, from:-90d
-    | sort timestamp desc
-    | dedup display_id
-    | filter contains(event.name, "IBMMQ_APP")
-    | fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
-    | filter in(apmid, array($ClaimsApps))
-    | expand eid = affected_entity_ids
-    | lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
-             sourceField: eid, lookupField: id, prefix: "lq."
-    | filter isNotNull(lq.qName)
-    | summarize by_q = count(), by:{apmid, queueName = lq.qName}
-    | lookup [
-        timeseries d = avg(ibmmq.queue.depth), by:{queue_manager, queue_name}, from:-24h
-        | summarize qms = collectDistinct(queue_manager), by:{queue_name}
-      ], sourceField: queueName, lookupField: queue_name, prefix: "m."
-    | expand qm = m.qms
-    | filter isNotNull(qm)
-    | summarize qmList = collectDistinct(qm), by:{apmid}
-    | expand qmName = qmList
-    | fields apmid, qmName
-  ], sourceField: queue_manager, lookupField: qmName, prefix: "map."
-| filter isNotNull(map.apmid)
-| fieldsAdd apmid = map.apmid
-// MQ server name and host ID
-| lookup [
-    timeseries a = avg(ibmmq.queue_manager.availability),
-               by:{queue_manager, host.name, dt.entity.host}, from:-30m
-    | summarize server = takeFirst(host.name),
-                hostId = takeFirst(dt.entity.host),
-                by:{queue_manager}
-  ], sourceField: queue_manager, lookupField: queue_manager, prefix: "a."
-// entity IDs for Open with
-| lookup [
-    fetch `dt.entity.ibmmq:queue_manager`
-    | fields qmEntityId = id, qmEntityName = entity.name
-  ], sourceField: queue_manager, lookupField: qmEntityName, prefix: "e."
-| fieldsAdd status = if(channel_status == "Stopped" or channel_status == "Retrying",
-                        "🔴 Critical", else: "🟠 Warning"),
-            rank   = if(channel_status == "Stopped" or channel_status == "Retrying", 1, else: 2)
-| fieldsAdd appQmChannel = concat(apmid, " | ", coalesce(a.server, "host n/a"), " : ", queue_manager, " / ", channel_name)
-| fields status, appQmChannel, channelStatus = channel_status, channelType = channel_type,
-         `dt.entity.ibmmq:queue_manager` = e.qmEntityId,
-         dt.entity.host = a.hostId,
-         rank
-| sort rank asc, appQmChannel asc
-| fieldsRemove rank
+Discovery
+
+K1: Which Kubernetes metrics exist
+
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "dt.kubernetes")
+| summarize series = count(), by:{metric.key}
+| sort metric.key asc
 
 
-Settings
+This confirms the keys for replicas, throttling, OOM and volumes, and shows which have enough series to build on. If the list is long, send it in two screenshots.
+
+K2: Dimensions on the candidate metrics
+
+fetch metric.series, from:-2h
+| filter contains(metric.key, "throttl") or contains(metric.key, "conditions")
+      or contains(metric.key, "pods") or contains(metric.key, "oom")
+      or contains(metric.key, "volume") or contains(metric.key, "restarts")
+| dedup metric.key
+| limit 20
+
+
+Scroll right on each record. I'm looking for k8s.cluster.name, k8s.namespace.name, k8s.workload.name and k8s.pod.name. That tells me whether a tile can show the workload and pod, or only the namespace. Also send the Unit and Description for restarts, as I need to know whether it's a count per interval or a running total.
+
+K3: Container problems on Claims apps, and which are active
+
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter dt.davis.is_duplicate == false
+| expand tag = entity_tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| dedup display_id
+| filter contains(lower(toString(affected_entity_types)), "kubernetes")
+      or contains(lower(toString(affected_entity_types)), "cloud_application")
+      or contains(lower(event.name), "pod") or contains(lower(event.name), "deployment")
+      or contains(lower(event.name), "container") or contains(lower(event.name), "workload")
+      or contains(lower(event.name), "oom") or contains(lower(event.name), "backoff")
+      or contains(lower(event.name), "replica") or contains(lower(event.name), "pending")
+      or contains(lower(event.name), "pvc") or contains(lower(event.name), "volume")
+| summarize problems = count(),
+            active   = countIf(event.status == "ACTIVE"),
+            apps     = countDistinctExact(apmid),
+            types    = collectDistinct(toString(affected_entity_types)),
+            by:{event.name}
+| sort problems desc
+
+
+This shows which container problems actually occur for Claims and which are open now. It also shows which entity types they're raised on, which decides whether the workload can be opened from the tile.
+
+K4: Workload and pod entities, and how they link to namespaces. Run these one at a time and expand one record from each.
+
+fetch dt.entity.cloud_application
+| limit 3
+
+fetch dt.entity.cloud_application_instance
+| limit 3
+
+
+Send me the field list. I'm looking for a namespace name or ID, a cluster, tags, and workload type (Deployment, StatefulSet and so on). If a tile can read the namespace from the workload entity, I don't have to parse names.
+
+K5: Do Kubernetes events or OOM signals exist?
+
+fetch events, from:-7d
+| summarize events = count(), by:{event.kind, event.type}
+| sort events desc
+| limit 30
