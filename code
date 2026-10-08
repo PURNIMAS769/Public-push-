@@ -1,12 +1,1 @@
-Check which copies are unhealthy
-timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true),
-           by:{device.name, availability.replica.name, availability.database.name,
-               availability.database.synchronization_health,
-               availability.database.synchronization_state,
-               availability.database.state}, from:-30m
-| filter availability.database.name == "PICR_LP"
-| fields reporter = device.name, replica = availability.replica.name,
-         health = availability.database.synchronization_health,
-         syncState = availability.database.synchronization_state,
-         dbState = availability.database.state
-| sort reporter asc, replica asc
+MSSQL Always On – Database Synchronization
