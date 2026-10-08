@@ -1,18 +1,19 @@
-Check A: Are the metrics returning data?
-timeseries {req = sum(dt.service.request.count),
-            fail = sum(dt.service.request.failure_count, default:0)},
-           by:{dt.entity.service}
-| fieldsAdd reqs = arraySum(req), fails = arraySum(fail)
-| summarize services = count(), withTraffic = countIf(reqs > 0), withFailures = countIf(fails > 0)
-
-Check B: Which lookup filter drops the rows?
-fetch dt.entity.service
-| fields id, Service = entity.name, tags
-| expand tag = tags
-| fieldsAdd tag = toString(tag)
-| summarize apmids = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1],
-                       else: if(contains(tag, "APPID:"), splitString(tag, "APPID:")[1]))),
-            by:{id, Service}
-| fieldsAdd apmidCount = arraySize(apmids), apmid = apmids[0]
+timeseries {req = sum(dt.service.request.count), fail = sum(dt.service.request.failure_count)},
+           by:{dt.entity.service}, from:-1h
+| fieldsAdd req = arraySum(req), fail = arraySum(fail)
+| lookup [
+    fetch dt.entity.service
+    | fields id, svcName = entity.name, tags
+  ], sourceField: dt.entity.service, lookupField: id, prefix: "e."
+| expand tag = e.tags
+| filter contains(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| summarize services = count(), single = countIf(apmidCount == 1), multi = countIf(apmidCount > 1)
+| fieldsAdd failRatePct = if(req > 0, round(100.0 * fail / req, decimals:2), else: 0.0)
+| filter failRatePct > 10
+| fieldsAdd appService = concat(apmid, " | ", e.svcName)
+| fields appService, apmid, service = e.svcName, requests = req, failures = fail, failRatePct, dt.entity.service
+| sort failRatePct desc
+
+
+What changed:
