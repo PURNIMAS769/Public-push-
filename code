@@ -1,58 +1,53 @@
-D1: Which DB metrics exist, and how many series each
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "db2.")
-      or startsWith(metric.key, "sql-server.")
-      or startsWith(metric.key, "com.dynatrace.extension.sql-oracle")
-      or startsWith(metric.key, "mongodb.")
-      or startsWith(metric.key, "cloud.azure.microsoft_sql")
-| summarize series = count(), by:{metric.key}
-| sort metric.key asc
+Run these four
 
+E1: Which DB services do Claims apps use?
 
-If the list is too long for one screenshot, send it one technology at a time.
-
-D2: Dimensions on the key availability and health metrics
-
-This returns one record per metric. Scroll right and tell me the dimension columns. I'm looking for a dt.entity.* ID, a host, a process group instance, or an instance or database name.
-
-fetch metric.series, from:-2h
-| filter in(metric.key, {"db2.availability", "db2.hadr_state",
-                         "sql-server.uptime", "sql-server.always-on.db.synchronizationHealth",
-                         "com.dynatrace.extension.sql-oracle.status", "mongodb.current_connections"})
-| dedup metric.key
-
-
-Keys that don't exist in your tenant simply won't return a row.
-
-D3: Do Claims apps have DB processes, and which technologies?
-fetch dt.entity.process_group_instance
-| fields id, softwareTechnologies, tags
+fetch dt.entity.service
+| filter serviceType == "DATABASE_SERVICE"
+| fields id, dbService = entity.name, tags
 | expand tag = tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| expand tech = softwareTechnologies
-| fieldsAdd t = lower(toString(tech))
-| filter contains(t, "db2") or contains(t, "sql") or contains(t, "oracle") or contains(t, "mongo")
-| summarize instances = countDistinctExact(id), apps = countDistinctExact(apmid), by:{t}
+| summarize apps = countDistinctExact(apmid), by:{dbService}
 | sort apps desc
+| limit 40
 
 
-This tells us whether Claims apps carry DB processes directly. If it comes back empty, the databases sit on shared DB hosts that carry other apps' APMIDs. In that case we'd link by service calls or by alert names, as we did for MQ.
+E2: Do DB problems carry Claims APMIDs?
 
-I haven't confirmed that softwareTechnologies works this way on process group instances in your tenant. If it errors, send me the error.
-
-D4: DB-related Davis problems in the last 30 days (not filtered to Claims)
 fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
 | filter dt.davis.is_duplicate == false
-| filter contains(lower(event.name), "db2") or contains(lower(event.name), "sql")
-      or contains(lower(event.name), "oracle") or contains(lower(event.name), "mongo")
-      or contains(lower(event.name), "database") or contains(lower(event.name), "hadr")
-      or contains(lower(event.name), "deadlock") or contains(lower(event.name), "tablespace")
-      or contains(lower(event.name), "backup")
-| fieldsAdd types = toString(affected_entity_types)
-| summarize problems = count(), active = countIf(event.status == "ACTIVE"), by:{event.name, types}
+| filter contains(lower(event.name), "database") or contains(lower(event.name), "mssql")
+      or contains(lower(event.name), "oracle") or contains(lower(event.name), "db2")
+| expand tag = entity_tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($ClaimsApps))
+| dedup display_id
+| summarize problems = count(), active = countIf(event.status == "ACTIVE"),
+            apps = countDistinctExact(apmid), by:{event.name}
 | sort problems desc
+| limit 20
+
+
+If this returns nothing, Option B is out.
+
+E3: Attributes on a DB service
+
+fetch dt.entity.service
+| filter serviceType == "DATABASE_SERVICE"
+| limit 3
+
+
+Expand one record and send me the field list. I'm looking for database name, vendor and host or endpoint fields that could connect a service to a DB instance.
+
+E4: z/OS DB2 and PostgreSQL metrics
+
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "dt.process.zos.db2") or contains(lower(metric.key), "postgres")
+| summarize series = count(), by:{metric.key}
+| sort series desc
 | limit 30
