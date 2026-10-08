@@ -1,4 +1,8 @@
-nks each app to its queues, so each row shows the app, queue manager and queue.
+Tile 6.2: Queue depth breaches
+
+This lists queues at 80% full or more. 80% matches your existing Davis alert rule, and the unit is confirmed as percent. I haven't run it.
+
+This tile works at queue level, not queue manager level. It uses the map from alert history, which links each app to its queues, so each row shows the app, queue manager and queue.
 
 timeseries {pct = max(ibmmq.queue.depth_percent, scalar: true),
             depth = max(ibmmq.queue.depth, scalar: true)},
