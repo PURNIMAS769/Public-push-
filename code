@@ -1,4 +1,5 @@
-How many Claims processes report JVM data?
+his tells us where to set the threshold, so the tile doesn't end up empty or full of noise.
+
 timeseries gc = avg(dt.runtime.jvm.gc.suspension_time, scalar: true),
            by:{dt.entity.process_group_instance}, from:-2h
 | lookup [
@@ -11,10 +12,7 @@ timeseries gc = avg(dt.runtime.jvm.gc.suspension_time, scalar: true),
     | fieldsAdd apmid = apmids[0]
   ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
 | filter in(p.apmid, array($ClaimsApps))
-| summarize jvms = count(), apps = countDistinctExact(p.apmid),
-            avgGc = round(avg(gc), decimals:2), maxGc = round(max(gc), decimals:2)
-
-
-fetch metric.series, from:-2h
-| filter metric.key == "dt.runtime.jvm.memory_pool.used"
-| limit 3
+| summarize jvms = count(),
+            `gc >= 1`  = countIf(gc >= 1),
+            `gc >= 5`  = countIf(gc >= 5),
+            `gc >= 10` = countIf(gc >= 10)
