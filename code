@@ -1,16 +1,13 @@
+Check: top latency processes, no thresholds
 timeseries lat = avg(dt.process.network.latency),
            by:{dt.entity.process_group_instance}, from:-2h
 | fieldsAdd latMs = arrayAvg(lat)
-| filter coalesce(latMs, 0) >= 20
-// each process's own 7-day baseline (excluding the last 2 hours)
 | lookup [
     timeseries lat = avg(dt.process.network.latency),
                by:{dt.entity.process_group_instance}, from:-7d, to:-2h, interval:1h
     | fieldsAdd latBase = arrayAvg(lat)
     | fields dt.entity.process_group_instance, latBase
   ], sourceField: dt.entity.process_group_instance, lookupField: dt.entity.process_group_instance, prefix: "b."
-| filter isNotNull(b.latBase)
-// process -> Claims app, process name, host
 | lookup [
     fetch dt.entity.process_group_instance
     | fieldsAdd hostId = belongs_to[dt.entity.host]
@@ -25,19 +22,9 @@ timeseries lat = avg(dt.process.network.latency),
     | fields id, Process, hostId, apmid
   ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
 | filter isNotNull(p.id)
-| lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
-         sourceField: p.hostId, lookupField: id, prefix: "h."
-| fieldsAdd latRatio = if(b.latBase > 0, latMs / b.latBase, else: 1.0)
-| fieldsAdd status = if(latRatio >= 4 and latMs >= 50, "🔴 Critical",
-                     else: if(latRatio >= 2 and latMs >= 20, "🟠 Warning", else: "OK")),
-            rank   = if(latRatio >= 4 and latMs >= 50, 1, else: 2)
-| filter status != "OK"
-| fieldsAdd appProcessHost = concat(p.apmid, " | ", p.Process, " : ", coalesce(h.Host, "host n/a"))
-| fields status, appProcessHost,
-         latencyMs = round(latMs, decimals:2), baselineMs = round(b.latBase, decimals:2),
-         dt.entity.process_group_instance, rank
-| sort rank asc, latencyMs desc
-| fieldsRemove rank
-
-
-Rules
+| fieldsAdd latencyMs  = round(latMs, decimals:2),
+            baselineMs = round(b.latBase, decimals:2),
+            ratio      = if(b.latBase > 0, round(latMs / b.latBase, decimals:1), else: null)
+| fields apmid = p.apmid, process = p.Process, latencyMs, baselineMs, ratio
+| sort latencyMs desc
+| limit 15
