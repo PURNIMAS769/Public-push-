@@ -1,35 +1,56 @@
-Check A: how large are NIC drops on Claims hosts, as a rate and as a share of packets?
+Tile 8.3: NIC drops and errors
 
+Set the tile timeframe to Last 2 hours. The status rules are placeholders:
+
+Status	Condition🔴 Critical	Drops ≥ 5% of packets and ≥ 1 drop/s, or any NIC errors
+🟠 Warning	Drops ≥ 1% of packets and ≥ 0.5 drops/s
 timeseries {drx = avg(dt.host.net.nic.packets.dropped_rx),
             dtx = avg(dt.host.net.nic.packets.dropped_tx),
+            erx = avg(dt.host.net.nic.packets.errors_rx),
+            etx = avg(dt.host.net.nic.packets.errors_tx),
             prx = avg(dt.host.net.nic.packets.rx),
             ptx = avg(dt.host.net.nic.packets.tx)},
-           by:{dt.entity.host, dt.entity.network_interface}, from:-2h
+           by:{dt.entity.host, dt.entity.network_interface}
 | fieldsAdd dropRate = coalesce(arrayAvg(drx), 0) + coalesce(arrayAvg(dtx), 0),
+            errRate  = coalesce(arrayAvg(erx), 0) + coalesce(arrayAvg(etx), 0),
             pktRate  = coalesce(arrayAvg(prx), 0) + coalesce(arrayAvg(ptx), 0)
 | fieldsAdd dropPct = if(pktRate > 0, 100.0 * dropRate / pktRate, else: 0.0)
-| lookup [ fetch dt.entity.host | fields id, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "e."
-| expand tag = e.tags
+| filter (dropPct >= 1 and dropRate >= 0.5) or errRate > 0
+| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
+         sourceField: dt.entity.host, lookupField: id, prefix: "h."
+| lookup [ fetch dt.entity.network_interface | fields id, nicName = entity.name ],
+         sourceField: dt.entity.network_interface, lookupField: id, prefix: "n."
+| expand tag = h.tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| summarize interfaces      = countDistinctExact(dt.entity.network_interface),
-            withDrops       = countDistinctExact(if(dropRate > 0, dt.entity.network_interface)),
-            `drops >= 0.1%` = countDistinctExact(if(dropPct >= 0.1, dt.entity.network_interface)),
-            `drops >= 1%`   = countDistinctExact(if(dropPct >= 1, dt.entity.network_interface)),
-            `drops >= 5%`   = countDistinctExact(if(dropPct >= 5, dt.entity.network_interface)),
-            maxDropRate     = round(max(dropRate), decimals:2),
-            maxDropPct      = round(max(dropPct), decimals:2)
+| fieldsAdd status = if((dropPct >= 5 and dropRate >= 1) or errRate > 0, "🔴 Critical", else: "🟠 Warning"),
+            rank   = if((dropPct >= 5 and dropRate >= 1) or errRate > 0, 1, else: 2)
+| fieldsAdd appHostNic = concat(apmid, " | ", coalesce(h.hostName, "host n/a"), " : ",
+                                coalesce(n.nicName, dt.entity.network_interface))
+| fields status, appHostNic,
+         dropPct = round(dropPct, decimals:2), dropsPerSec = round(dropRate, decimals:2),
+         errorsPerSec = round(errRate, decimals:2),
+         dt.entity.host, dt.entity.network_interface, rank
+| sort rank asc, dropPct desc
+| fieldsRemove rank
 
+Settings: hide the two ID columns but keep them in the query so Open with works. Set the No data message to "No Claims NIC drops above threshold".
+Expected result: roughly the 19 interfaces at 1% or more, minus any below 0.5 drops/s. Interfaces on shared hosts repeat under each app.
+Check: I haven't confirmed that dt.entity.network_interface is a fetchable entity type. The dimension exists, but if the lookup errors, delete that lookup and use the ID as the label.
+Errors: all Claims hosts showed 0 errors, so that column should stay at 0.
+Tile 8.4: TCP retransmissions by app
 
-This returns one row. It shows where a drop threshold would sit, so we don't flag 52 hosts for a handful of dropped packets. I haven't confirmed that packets.rx and packets.tx carry the interface dimension. If it errors, tell me.
+Set the tile timeframe to Last 2 hours. The status rules are placeholders:
 
-Check B: retransmissions as a percentage of packets sent, per app
+Status	Condition🔴 Critical	Retransmissions ≥ 5% of packets sent
+🟠 Warning	≥ 1% of packets sent
+
+Apps need at least 100 packets/s of traffic to appear.
 
 timeseries {re = avg(dt.process.network.packets.re_tx_aggr),
             tx = avg(dt.process.network.packets.tx)},
-           by:{dt.entity.process_group_instance}, from:-2h
+           by:{dt.entity.process_group_instance}
 | fieldsAdd reRate = coalesce(arrayAvg(re), 0),
             txRate = coalesce(arrayAvg(tx), 0)
 | lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
@@ -39,29 +60,16 @@ timeseries {re = avg(dt.process.network.packets.re_tx_aggr),
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
 | summarize processes = countDistinctExact(dt.entity.process_group_instance),
-            reRate    = round(sum(reRate), decimals:2),
-            txRate    = round(sum(txRate), decimals:0),
+            reRate    = sum(reRate),
+            txRate    = sum(txRate),
             by:{apmid}
-| fieldsAdd retransPct = if(txRate > 0, round(100.0 * reRate / txRate, decimals:2), else: 0.0)
-| sort retransPct desc
-
-
-This assumes packets.tx is the right total to divide by. I haven't confirmed that. Please open dt.process.network.packets.base_re_tx_aggr in the metric browser and send me its Description, because it may be the intended base for a retransmission ratio. If a few apps have a very high percentage on very low traffic, I'll add a minimum-traffic filter.
-
-Optional: resets and timeouts using the _local variants
-
-timeseries {rs = avg(dt.process.network.sessions.reset_local),
-            to = avg(dt.process.network.sessions.timeout_local)},
-           by:{dt.entity.process_group_instance}, from:-2h
-| fieldsAdd rs = coalesce(arrayAvg(rs), 0), to = coalesce(arrayAvg(to), 0)
-| lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
-         sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
-| expand tag = e.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| summarize processes = countDistinctExact(dt.entity.process_group_instance),
-            resets = round(sum(rs), decimals:2), timeouts = round(sum(to), decimals:2),
-            by:{apmid}
-| filter resets > 0 or timeouts > 0
-| sort resets desc
+| fieldsAdd retransPct = if(txRate > 0, 100.0 * reRate / txRate, else: 0.0)
+| filter retransPct >= 1 and txRate >= 100
+| fieldsAdd status = if(retransPct >= 5, "🔴 Critical", else: "🟠 Warning"),
+            rank   = if(retransPct >= 5, 1, else: 2)
+| fields status, apmid, processes,
+         retransPct = round(retransPct, decimals:2),
+         retransPerSec = round(reRate, decimals:2),
+         txPerSec = round(txRate, decimals:0), rank
+| sort rank asc, retransPct desc
+| fieldsRemove rank
