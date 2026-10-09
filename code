@@ -1,17 +1,15 @@
-timeseries {lat = avg(dt.process.network.latency),
-            rtt = avg(dt.process.network.round_trip)},
+timeseries lat = avg(dt.process.network.latency),
            by:{dt.entity.process_group_instance}, from:-2h
-| fieldsAdd latMs = arrayAvg(lat), rttMs = arrayAvg(rtt)
-| filter coalesce(latMs, 0) >= 20 or coalesce(rttMs, 0) >= 5
+| fieldsAdd latMs = arrayAvg(lat)
+| filter coalesce(latMs, 0) >= 20
 // each process's own 7-day baseline (excluding the last 2 hours)
 | lookup [
-    timeseries {lat = avg(dt.process.network.latency),
-                rtt = avg(dt.process.network.round_trip)},
+    timeseries lat = avg(dt.process.network.latency),
                by:{dt.entity.process_group_instance}, from:-7d, to:-2h, interval:1h
-    | fieldsAdd latBase = arrayAvg(lat), rttBase = arrayAvg(rtt)
-    | fields dt.entity.process_group_instance, latBase, rttBase
+    | fieldsAdd latBase = arrayAvg(lat)
+    | fields dt.entity.process_group_instance, latBase
   ], sourceField: dt.entity.process_group_instance, lookupField: dt.entity.process_group_instance, prefix: "b."
-| filter isNotNull(b.latBase) or isNotNull(b.rttBase)
+| filter isNotNull(b.latBase)
 // process -> Claims app, process name, host
 | lookup [
     fetch dt.entity.process_group_instance
@@ -29,20 +27,17 @@ timeseries {lat = avg(dt.process.network.latency),
 | filter isNotNull(p.id)
 | lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
          sourceField: p.hostId, lookupField: id, prefix: "h."
-| fieldsAdd rttRatio = if(b.rttBase > 0, rttMs / b.rttBase, else: 1.0),
-            latRatio = if(b.latBase > 0, latMs / b.latBase, else: 1.0)
-| fieldsAdd status = if((rttRatio >= 4 and rttMs >= 20) or (latRatio >= 4 and latMs >= 50), "🔴 Critical",
-                     else: if((rttRatio >= 2 and rttMs >= 5) or (latRatio >= 2 and latMs >= 20), "🟠 Warning",
-                     else: "OK")),
-            rank   = if((rttRatio >= 4 and rttMs >= 20) or (latRatio >= 4 and latMs >= 50), 1, else: 2)
+| fieldsAdd latRatio = if(b.latBase > 0, latMs / b.latBase, else: 1.0)
+| fieldsAdd status = if(latRatio >= 4 and latMs >= 50, "🔴 Critical",
+                     else: if(latRatio >= 2 and latMs >= 20, "🟠 Warning", else: "OK")),
+            rank   = if(latRatio >= 4 and latMs >= 50, 1, else: 2)
 | filter status != "OK"
 | fieldsAdd appProcessHost = concat(p.apmid, " | ", p.Process, " : ", coalesce(h.Host, "host n/a"))
 | fields status, appProcessHost,
-         rttMs = round(rttMs, decimals:2), rttBaselineMs = round(b.rttBase, decimals:2),
-         latencyMs = round(latMs, decimals:2), latBaselineMs = round(b.latBase, decimals:2),
+         latencyMs = round(latMs, decimals:2), baselineMs = round(b.latBase, decimals:2),
          dt.entity.process_group_instance, rank
-| sort rank asc, rttMs desc
+| sort rank asc, latencyMs desc
 | fieldsRemove rank
 
 
-Settings
+Rules
