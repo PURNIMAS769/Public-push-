@@ -1,12 +1,22 @@
-Step 1: Confirm with the thresholds removed
+Discovery
 
-This is the same query with no threshold and an explicit 2-hour window:
+T1: Exact metric keys for throughput, link utilization, latency and round trip
 
-timeseries {re = avg(dt.process.network.packets.re_tx_aggr),
-            tx = avg(dt.process.network.packets.tx)},
+fetch metric.series, from:-2h
+| filter startsWith(metric.key, "dt.host.net.nic.bytes")
+      or startsWith(metric.key, "dt.host.net.nic.link")
+      or startsWith(metric.key, "dt.process.network.latency")
+      or startsWith(metric.key, "dt.process.network.round_trip")
+| summarize series = count(), by:{metric.key}
+| sort metric.key asc
+
+
+T2: Latency and round trip on Claims apps
+
+timeseries {lat = avg(dt.process.network.latency),
+            rtt = avg(dt.process.network.round_trip)},
            by:{dt.entity.process_group_instance}, from:-2h
-| fieldsAdd reRate = coalesce(arrayAvg(re), 0),
-            txRate = coalesce(arrayAvg(tx), 0)
+| fieldsAdd latAvg = arrayAvg(lat), rttAvg = arrayAvg(rtt)
 | lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
          sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
 | expand tag = e.tags
@@ -14,44 +24,40 @@ timeseries {re = avg(dt.process.network.packets.re_tx_aggr),
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
 | summarize processes = countDistinctExact(dt.entity.process_group_instance),
-            reRate    = sum(reRate),
-            txRate    = sum(txRate),
+            avgLatency  = round(avg(latAvg), decimals:2),
+            maxLatency  = round(max(latAvg), decimals:2),
+            avgRtt      = round(avg(rttAvg), decimals:2),
+            maxRtt      = round(max(rttAvg), decimals:2),
             by:{apmid}
-| fieldsAdd retransPct = if(txRate > 0, 100.0 * reRate / txRate, else: 0.0)
-| sort retransPct desc
-| limit 10
+| sort maxRtt desc
 
-Rows with the same values as Check B: the query is fine and the tile timeframe was the problem. Set the tile timeframe to Last 2 hours, or keep from:-2h in the query.
-Values noticeably lower now: retransmissions have dropped since Check B, so an empty tile is the correct result at this moment.
-Step 2: Tuned tile (more forgiving thresholds)
 
-This lowers the limits to 0.5% and a 10 packets/s minimum, so the two apps from Check B (APP00002734 and APP00237082) appear when they're elevated. The 5% Critical limit stays the same. These are still my placeholders, not your policy.
+Send the top 10 rows and the record count. I need to see whether the values are small and similar across apps or have clear outliers.
 
-timeseries {re = avg(dt.process.network.packets.re_tx_aggr),
-            tx = avg(dt.process.network.packets.tx)},
-           by:{dt.entity.process_group_instance}, from:-2h
-| fieldsAdd reRate = coalesce(arrayAvg(re), 0),
-            txRate = coalesce(arrayAvg(tx), 0)
-| lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
-         sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
-| expand tag = e.tags
+T3: Link utilization on Claims interfaces
+
+timeseries {rx = avg(dt.host.net.nic.link_util_rx),
+            tx = avg(dt.host.net.nic.link_util_tx)},
+           by:{dt.entity.host, dt.entity.network_interface}, from:-2h
+| fieldsAdd util = max(coalesce(arrayAvg(rx), 0), coalesce(arrayAvg(tx), 0))
+| lookup [ fetch dt.entity.host | fields id, tags ],
+         sourceField: dt.entity.host, lookupField: id, prefix: "h."
+| expand tag = h.tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($ClaimsApps))
-| summarize processes = countDistinctExact(dt.entity.process_group_instance),
-            reRate    = sum(reRate),
-            txRate    = sum(txRate),
-            by:{apmid}
-| fieldsAdd retransPct = if(txRate > 0, 100.0 * reRate / txRate, else: 0.0)
-| filter retransPct >= 0.5 and txRate >= 10
-| fieldsAdd status = if(retransPct >= 5, "🔴 Critical", else: "🟠 Warning"),
-            rank   = if(retransPct >= 5, 1, else: 2)
-| fields status, apmid, processes,
-         retransPct = round(retransPct, decimals:2),
-         retransPerSec = round(reRate, decimals:2),
-         txPerSec = round(txRate, decimals:0), rank
-| sort rank asc, retransPct desc
-| fieldsRemove rank
+| dedup dt.entity.network_interface
+| summarize interfaces = count(),
+            `util >= 50` = countIf(util >= 50),
+            `util >= 70` = countIf(util >= 70),
+            `util >= 90` = countIf(util >= 90),
+            maxUtil = round(max(util), decimals:2)
 
 
-What to
+This returns one row, like the NIC drops check. If max(a, b) isn't accepted, replace it with if(arrayAvg(rx) > arrayAvg(tx), arrayAvg(rx), else: arrayAvg(tx)).
+
+Units, from the metric browser. Send the Unit and Description for:
+
+dt.process.network.latency
+dt.process.network.round_trip
+dt.host.net.nic.link_util_rx
