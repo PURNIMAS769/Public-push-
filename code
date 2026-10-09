@@ -1,19 +1,48 @@
-T3 fixed: link utilization
-timeseries {rx = avg(dt.host.net.nic.link_util_rx),
-            tx = avg(dt.host.net.nic.link_util_tx)},
-           by:{dt.entity.host, dt.entity.network_interface}, from:-2h
-| fieldsAdd rxAvg = coalesce(arrayAvg(rx), 0),
-            txAvg = coalesce(arrayAvg(tx), 0)
-| fieldsAdd util = if(rxAvg > txAvg, rxAvg, else: txAvg)
-| lookup [ fetch dt.entity.host | fields id, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "h."
-| expand tag = h.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| dedup dt.entity.network_interface
-| summarize interfaces = count(),
-            `util >= 50` = countIf(util >= 50),
-            `util >= 70` = countIf(util >= 70),
-            `util >= 90` = countIf(util >= 90),
-            maxUtil = round(max(util), decimals:2)
+timeseries {lat = avg(dt.process.network.latency),
+            rtt = avg(dt.process.network.round_trip)},
+           by:{dt.entity.process_group_instance}, from:-2h
+| fieldsAdd latMs = arrayAvg(lat), rttMs = arrayAvg(rtt)
+| filter coalesce(latMs, 0) >= 20 or coalesce(rttMs, 0) >= 5
+// each process's own 7-day baseline (excluding the last 2 hours)
+| lookup [
+    timeseries {lat = avg(dt.process.network.latency),
+                rtt = avg(dt.process.network.round_trip)},
+               by:{dt.entity.process_group_instance}, from:-7d, to:-2h, interval:1h
+    | fieldsAdd latBase = arrayAvg(lat), rttBase = arrayAvg(rtt)
+    | fields dt.entity.process_group_instance, latBase, rttBase
+  ], sourceField: dt.entity.process_group_instance, lookupField: dt.entity.process_group_instance, prefix: "b."
+| filter isNotNull(b.latBase) or isNotNull(b.rttBase)
+// process -> Claims app, process name, host
+| lookup [
+    fetch dt.entity.process_group_instance
+    | fieldsAdd hostId = belongs_to[dt.entity.host]
+    | fields id, Process = entity.name, hostId, tags
+    | expand tag = tags
+    | filter startsWith(tag, "APMID:")
+    | summarize apmids = arrayRemoveNulls(collectDistinct(splitString(tag, "APMID:")[1])),
+                by:{id, Process, hostId}
+    | filter arraySize(apmids) == 1
+    | fieldsAdd apmid = apmids[0]
+    | filter in(apmid, array($ClaimsApps))
+    | fields id, Process, hostId, apmid
+  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
+| filter isNotNull(p.id)
+| lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
+         sourceField: p.hostId, lookupField: id, prefix: "h."
+| fieldsAdd rttRatio = if(b.rttBase > 0, rttMs / b.rttBase, else: 1.0),
+            latRatio = if(b.latBase > 0, latMs / b.latBase, else: 1.0)
+| fieldsAdd status = if((rttRatio >= 4 and rttMs >= 20) or (latRatio >= 4 and latMs >= 50), "🔴 Critical",
+                     else: if((rttRatio >= 2 and rttMs >= 5) or (latRatio >= 2 and latMs >= 20), "🟠 Warning",
+                     else: "OK")),
+            rank   = if((rttRatio >= 4 and rttMs >= 20) or (latRatio >= 4 and latMs >= 50), 1, else: 2)
+| filter status != "OK"
+| fieldsAdd appProcessHost = concat(p.apmid, " | ", p.Process, " : ", coalesce(h.Host, "host n/a"))
+| fields status, appProcessHost,
+         rttMs = round(rttMs, decimals:2), rttBaselineMs = round(b.rttBase, decimals:2),
+         latencyMs = round(latMs, decimals:2), latBaselineMs = round(b.latBase, decimals:2),
+         dt.entity.process_group_instance, rank
+| sort rank asc, rttMs desc
+| fieldsRemove rank
+
+
+Settings
