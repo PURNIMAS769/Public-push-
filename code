@@ -1,30 +1,43 @@
-Step 1: Same as T2, listed per process
-
-This uses the join that already returned data in T2. It has no baseline, no single-APMID rule and no host lookup.
-
 timeseries lat = avg(dt.process.network.latency),
            by:{dt.entity.process_group_instance}, from:-2h
-| fieldsAdd latMs = round(arrayAvg(lat), decimals:2)
-| lookup [ fetch dt.entity.process_group_instance | fields id, Process = entity.name, tags ],
-         sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
-| expand tag = e.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| fields apmid, process = e.Process, latMs, dt.entity.process_group_instance
-| sort latMs desc
-| limit 15
+| fieldsAdd latMs = arrayAvg(lat)
+| filter coalesce(latMs, 0) >= 10
+// each process's own 7-day baseline (excluding the last 2 hours)
+| lookup [
+    timeseries lat = avg(dt.process.network.latency),
+               by:{dt.entity.process_group_instance}, from:-7d, to:-2h, interval:1h
+    | fieldsAdd latBase = arrayAvg(lat)
+    | fields dt.entity.process_group_instance, latBase
+  ], sourceField: dt.entity.process_group_instance, lookupField: dt.entity.process_group_instance, prefix: "b."
+// process -> Claims app, process name, host
+| lookup [
+    fetch dt.entity.process_group_instance
+    | fieldsAdd hostId = belongs_to[dt.entity.host]
+    | fields id, Process = entity.name, hostId, tags
+    | expand tag = tags
+    | filter startsWith(tag, "APMID:")
+    | summarize apmids = arrayRemoveNulls(collectDistinct(splitString(tag, "APMID:")[1])),
+                by:{id, Process, hostId}
+    | filter arraySize(apmids) == 1
+    | fieldsAdd apmid = apmids[0]
+    | filter in(apmid, array($ClaimsApps))
+    | fields id, Process, hostId, apmid
+  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
+| filter isNotNull(p.id)
+| lookup [ fetch dt.entity.host | fields id, Host = entity.name ],
+         sourceField: p.hostId, lookupField: id, prefix: "h."
+| fieldsAdd ratio = if(b.latBase > 0, latMs / b.latBase, else: 1.0)
+| fieldsAdd status = if(latMs >= 50 or (ratio >= 4 and latMs >= 20), "🔴 Critical",
+                     else: if(latMs >= 20 or (ratio >= 2 and latMs >= 10), "🟠 Warning", else: "OK")),
+            rank   = if(latMs >= 50 or (ratio >= 4 and latMs >= 20), 1, else: 2)
+| filter status != "OK"
+| fieldsAdd appProcessHost = concat(p.apmid, " | ", p.Process, " : ", coalesce(h.Host, "host n/a"))
+| fields status, appProcessHost,
+         latencyMs = round(latMs, decimals:2), baselineMs = round(b.latBase, decimals:2),
+         ratio = round(ratio, decimals:1),
+         dt.entity.process_group_instance, rank
+| sort rank asc, latencyMs desc
+| fieldsRemove rank
 
-Rows appear: the base query works. The single-APMID rule, the baseline lookup or the host lookup is removing them, and Step 2 finds which.
-No rows: send me the error or a screenshot. T2 used the same join, so I'd need to see what differs.
-Step 2: Check the single-APMID rule
 
-Run this only if Step 1 returns rows. It shows how many APMIDs each process carries:
-
-fetch dt.entity.process_group_instance
-| fields id, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| summarize apmidCount = countDistinctExact(tag), by:{id}
-| summarize processes = count(), by:{apmidCount}
-| sort apmidCount asc
+Settings
