@@ -1,45 +1,10 @@
-Discovery
-
-T1: Exact metric keys for throughput, link utilization, latency and round trip
-
-fetch metric.series, from:-2h
-| filter startsWith(metric.key, "dt.host.net.nic.bytes")
-      or startsWith(metric.key, "dt.host.net.nic.link")
-      or startsWith(metric.key, "dt.process.network.latency")
-      or startsWith(metric.key, "dt.process.network.round_trip")
-| summarize series = count(), by:{metric.key}
-| sort metric.key asc
-
-
-T2: Latency and round trip on Claims apps
-
-timeseries {lat = avg(dt.process.network.latency),
-            rtt = avg(dt.process.network.round_trip)},
-           by:{dt.entity.process_group_instance}, from:-2h
-| fieldsAdd latAvg = arrayAvg(lat), rttAvg = arrayAvg(rtt)
-| lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
-         sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
-| expand tag = e.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| summarize processes = countDistinctExact(dt.entity.process_group_instance),
-            avgLatency  = round(avg(latAvg), decimals:2),
-            maxLatency  = round(max(latAvg), decimals:2),
-            avgRtt      = round(avg(rttAvg), decimals:2),
-            maxRtt      = round(max(rttAvg), decimals:2),
-            by:{apmid}
-| sort maxRtt desc
-
-
-Send the top 10 rows and the record count. I need to see whether the values are small and similar across apps or have clear outliers.
-
-T3: Link utilization on Claims interfaces
-
+T3 fixed: link utilization
 timeseries {rx = avg(dt.host.net.nic.link_util_rx),
             tx = avg(dt.host.net.nic.link_util_tx)},
            by:{dt.entity.host, dt.entity.network_interface}, from:-2h
-| fieldsAdd util = max(coalesce(arrayAvg(rx), 0), coalesce(arrayAvg(tx), 0))
+| fieldsAdd rxAvg = coalesce(arrayAvg(rx), 0),
+            txAvg = coalesce(arrayAvg(tx), 0)
+| fieldsAdd util = if(rxAvg > txAvg, rxAvg, else: txAvg)
 | lookup [ fetch dt.entity.host | fields id, tags ],
          sourceField: dt.entity.host, lookupField: id, prefix: "h."
 | expand tag = h.tags
@@ -52,12 +17,3 @@ timeseries {rx = avg(dt.host.net.nic.link_util_rx),
             `util >= 70` = countIf(util >= 70),
             `util >= 90` = countIf(util >= 90),
             maxUtil = round(max(util), decimals:2)
-
-
-This returns one row, like the NIC drops check. If max(a, b) isn't accepted, replace it with if(arrayAvg(rx) > arrayAvg(tx), arrayAvg(rx), else: arrayAvg(tx)).
-
-Units, from the metric browser. Send the Unit and Description for:
-
-dt.process.network.latency
-dt.process.network.round_trip
-dt.host.net.nic.link_util_rx
