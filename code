@@ -1,40 +1,36 @@
-is a Claims alert or a shared-platform one. I haven't run it.
+M1: Tags on hosts mentioning Membership or Commercial
 
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| filter contains(event.name, "IBMMQ")
-      or contains(lower(event.name), "queue manager")
-      or contains(lower(event.name), "queue_manager")
-      or contains(lower(event.name), "dead-letter")
-      or contains(lower(event.name), "dead letter")
-      or contains(lower(toString(affected_entity_types)), "ibmmq")
-// Claims APMID is carried in the alert name (IBMMQ_APP<id>)
-| fieldsAdd nameApmid = if(contains(event.name, "IBMMQ_APP"),
-                           concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8)))
-// readable queue / queue manager names
-| expand eid = affected_entity_ids
-| lookup [ fetch `dt.entity.ibmmq:queue_manager` | fields id, qmName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "qm."
-| lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
-         sourceField: eid, lookupField: id, prefix: "lq."
-| fieldsAdd mqEntity = coalesce(lq.qName, qm.qmName)
-| summarize affected = arrayToString(arrayRemoveNulls(collectDistinct(mqEntity)), delimiter:", "),
-            alert    = takeFirst(event.name),
-            category = takeFirst(event.category),
-            started  = takeFirst(event.start),
-            nameApmid = takeFirst(nameApmid),
-            by:{display_id}
-| fieldsAdd isClaims = coalesce(in(nameApmid, array($ClaimsApps)), false)
-| fieldsAdd scope  = if(isClaims, "Claims app", else: "Shared MQ platform / other"),
-            status = "🔴 Active",
-            openFor = now() - started,
-            rank   = if(isClaims, 1, else: 2)
-| fields status, scope, app = coalesce(nameApmid, "-"), alert, affected = coalesce(affected, "-"),
-         category, display_id, openFor, rank
-| sort rank asc, openFor desc
-| fieldsRemove rank
+fetch dt.entity.host
+| fields id, tags
+| expand tag = tags
+| filter contains(lower(tag), "member") or contains(lower(tag), "commercial")
+| summarize hosts = countDistinctExact(id), by:{tag}
+| sort hosts desc
+| limit 100
 
 
-What the tile sho
+This shows which tag key and value identifies Membership, for example Portfolio:… or a product line tag, and how many hosts carry it. Watch for spelling variants, as with Claims_Modernization and Claims Modernization.
+
+M2: The same check on OpenShift namespaces
+
+fetch dt.entity.cloud_application_namespace
+| fields id, entity.name, tags
+| expand tag = tags
+| filter contains(lower(tag), "member") or contains(lower(tag), "commercial")
+| summarize namespaces = countDistinctExact(id), by:{tag}
+| sort namespaces desc
+| limit 100
+
+
+M3: Applications under that tag, with names Run this after M1 shows the exact tag. Replace <TAG> with the value you find, for example portfolio:commercial markets:
+
+fetch dt.entity.host
+| fields id, tags, tagStr = toString(tags)
+| filter contains(lower(tagStr), "<TAG>")
+| expand tag = tags
+| filter startsWith(tag, "APMID:") or startsWith(tag, "APPName:")
+| summarize hosts = countDistinctExact(id),
+            names = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1]))),
+            by:{apmid = if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1])}
+| filter isNotNull(apmid)
+| sort hosts desc
