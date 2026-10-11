@@ -1,149 +1,56 @@
-data record(apmid = array($MembershipApps))
-| expand apmid
-// app name + namespace count
+S1: Services per Membership app, by type
+
+fetch dt.entity.service
+| fields id, serviceType, tags
+| expand tag = tags
+| filter startsWith(tag, "APMID:")
+| summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id, serviceType}
+| filter arraySize(apmids) == 1
+| fieldsAdd apmid = apmids[0]
+| filter in(apmid, array($MembershipApps))
+| summarize services = count(), apps = countDistinctExact(apmid), by:{serviceType}
+| sort services desc
+
+
+This shows how many are web request services and how many are database or background services. Only web request and web services feed the failure-rate and slow-service tiles.
+
+S2: JVM coverage on Membership processes
+
+timeseries gc = avg(dt.runtime.jvm.gc.suspension_time, scalar: true),
+           by:{dt.entity.process_group_instance}, from:-2h
 | lookup [
-    fetch dt.entity.cloud_application_namespace
-    | fields id, name = entity.name, tags
+    fetch dt.entity.process_group_instance
+    | fields id, tags
     | expand tag = tags
     | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | parse name, "LD '-' LD:nsName"
-    | summarize nsName = takeFirst(nsName), namespaces = countDistinctExact(id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "n."
-// hosts: seen in 24h, reporting in last 15 min
-| lookup [
-    timeseries cpu = avg(dt.host.cpu.usage), by:{dt.entity.host}, from:-24h, interval:5m
-    | fieldsAdd up = arraySize(arrayRemoveNulls(arraySlice(cpu, from:-3))) > 0
-    | lookup [ fetch dt.entity.host | fields id, tags ],
-             sourceField: dt.entity.host, lookupField: id, prefix: "e."
-    | expand tag = e.tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | filter in(apmid, array($MembershipApps))
-    | summarize hostsKnown = countDistinctExact(dt.entity.host),
-                hostsUp    = countDistinctExact(if(up, dt.entity.host)),
-                by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "h."
-// active Davis problems on hosts
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | sort timestamp desc
-    | dedup display_id
-    | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | expand hostId = affected_entity_ids
-    | filter startsWith(hostId, "HOST-")
-    | lookup [ fetch dt.entity.host | fields id, tags ],
-             sourceField: hostId, lookupField: id, prefix: "e."
-    | expand tag = e.tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize hostProblems = countDistinctExact(display_id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "hp."
-// OpenShift nodes: app -> nodes, Ready status, active node problems
-| lookup [
-    timeseries cpu = avg(dt.kubernetes.container.cpu_usage), by:{k8s.namespace.name, k8s.node.name}, from:-30m
-    | filter startsWith(k8s.namespace.name, "app")
-    | fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
-    | filter in(apmid, array($MembershipApps))
-    | summarize nodes = collectDistinct(k8s.node.name), by:{apmid}
-    | expand nodeName = nodes
-    | lookup [
-        timeseries c = avg(dt.kubernetes.node.conditions), by:{k8s.node.name, node_condition, condition_status}, from:-24h, interval:5m
-        | filter node_condition == "Ready" and lower(condition_status) == "true"
-        | fieldsAdd nodeName = k8s.node.name, recentMax = arrayMax(arraySlice(c, from:-3))
-        | fieldsAdd notReady = isNull(recentMax) or recentMax < 1
-        | fields nodeName, notReady
-      ], sourceField: nodeName, lookupField: nodeName, prefix: "r."
-    | lookup [
-        fetch dt.davis.problems, from:-30d
-        | sort timestamp desc
-        | dedup display_id
-        | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-        | expand nodeId = affected_entity_ids
-        | filter startsWith(nodeId, "KUBERNETES_NODE-")
-        | lookup [ fetch dt.entity.kubernetes_node | fields id, nName = entity.name ],
-                 sourceField: nodeId, lookupField: id, prefix: "e."
-        | summarize nodeProblems = countDistinctExact(display_id), by:{nodeName = e.nName}
-      ], sourceField: nodeName, lookupField: nodeName, prefix: "p."
-    | fieldsAdd bad = coalesce(r.notReady, false) or coalesce(p.nodeProblems, 0) > 0
-    | summarize nodesTotal = countDistinctExact(nodeName),
-                badNodes   = countDistinctExact(if(bad, nodeName)),
-                by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "nd."
-// services tagged to this app only
-| lookup [
-    timeseries {req = sum(dt.service.request.count), fail = sum(dt.service.request.failure_count)},
-               by:{dt.entity.service}, from:-1h
-    | fieldsAdd req = arraySum(req), fail = arraySum(fail)
-    | lookup [
-        fetch dt.entity.service
-        | fields id, tags
-        | expand tag = tags
-        | filter startsWith(tag, "APMID:")
-        | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
-        | filter arraySize(apmids) == 1
-        | fieldsAdd apmid = apmids[0]
-        | fields id, apmid
-      ], sourceField: dt.entity.service, lookupField: id, prefix: "e."
-    | filter isNotNull(e.apmid) and in(e.apmid, array($MembershipApps))
-    | summarize services = countDistinctExact(dt.entity.service),
-                requests = sum(req), failures = sum(fail), by:{apmid = e.apmid}
-    | fieldsAdd failRatePct = if(requests > 0, round(100.0 * failures / requests, decimals:2), else: 0.0)
-  ], sourceField: apmid, lookupField: apmid, prefix: "s."
-// container restarts (last hour)
-| lookup [
-    timeseries restarts = sum(dt.kubernetes.container.restarts), by:{k8s.namespace.name}, from:-1h
-    | fieldsAdd restarts = arraySum(restarts)
-    | filter startsWith(k8s.namespace.name, "app")
-    | fieldsAdd apmid = upper(substring(k8s.namespace.name, from:0, to:11))
-    | summarize restarts1h = sum(restarts), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "k."
-// active problems
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | sort timestamp desc
-    | dedup display_id
-    | filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-    | expand tag = entity_tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize activeProblems = countDistinctExact(display_id),
-                categories = collectDistinct(event.category),
-                realAvail  = countDistinctExact(if(event.category == "AVAILABILITY"
-                             and not(contains(toString(dt.davis.impact_level), "Synthetic")), display_id)),
-                by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "p."
-// defaults
-| fieldsAdd appName        = coalesce(n.nsName, apmid),
-            namespaces     = coalesce(n.namespaces, 0),
-            hostsKnown     = coalesce(h.hostsKnown, 0),
-            hostsUp        = coalesce(h.hostsUp, 0),
-            hostProblems   = coalesce(hp.hostProblems, 0),
-            nodesTotal     = coalesce(nd.nodesTotal, 0),
-            badNodes       = coalesce(nd.badNodes, 0),
-            services       = coalesce(s.services, 0),
-            requests       = coalesce(s.requests, 0),
-            failRatePct    = coalesce(s.failRatePct, 0.0),
-            restarts1h     = coalesce(k.restarts1h, 0),
-            activeProblems = coalesce(p.activeProblems, 0),
-            hasAvailability = coalesce(p.realAvail, 0) > 0,
-            categories     = p.categories
-// health
-| fieldsAdd hostHealth = if(hostsKnown == 0, "N/A",
-                         else: if(hostsUp < hostsKnown or hostProblems > 0, "🔴 Critical", else: "🟢 Healthy")),
-            nodeHealth = if(nodesTotal == 0, "N/A",
-                         else: if(badNodes > 0, "🔴 Critical", else: "🟢 Healthy"))
-| fieldsAdd health = if(contains(hostHealth, "Critical") or contains(nodeHealth, "Critical")
-                        or hasAvailability or (failRatePct >= 10 and requests >= 100), "🔴 Critical",
-                     else: if(activeProblems > 0 or failRatePct >= 2 or restarts1h >= 20, "🟠 Degraded",
-                     else: if(services == 0, "⚪ Unknown", else: "🟢 Healthy")))
-| fieldsAdd hosts = if(hostsKnown == 0, "-", else: concat(toString(hostsUp), " / ", toString(hostsKnown))),
-            problemTypes = if(isNull(categories), "-", else: toString(categories)),
-            rank = if(contains(health, "Critical"), 1, else: if(contains(health, "Degraded"), 2,
-                   else: if(contains(health, "Unknown"), 3, else: 4)))
-| sort rank asc, activeProblems desc, failRatePct desc
-| fields health, appName, apmid, hostHealth, hosts, nodeHealth, services, failRatePct,
-         namespaces, restarts1h, activeProblems, problemTypes
+    | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
+    | filter arraySize(apmids) == 1
+    | fieldsAdd apmid = apmids[0]
+  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
+| filter in(p.apmid, array($MembershipApps))
+| summarize jvms = count(), apps = countDistinctExact(p.apmid),
+            avgGc = round(avg(gc), decimals:2), maxGc = round(max(gc), decimals:2)
 
 
-Settings:
+If apps is very low, I'd drop the JVM tile. If it's high, maxGc helps set a threshold.
+
+S3: Process-level coverage and size
+
+timeseries {mem = avg(dt.process.memory.working_set_size),
+            cpu = avg(dt.process.cpu.usage)},
+           by:{dt.entity.process_group_instance}, from:-2h
+| lookup [
+    fetch dt.entity.process_group_instance
+    | fields id, tags
+    | expand tag = tags
+    | filter startsWith(tag, "APMID:")
+    | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
+    | filter arraySize(apmids) == 1
+    | fieldsAdd apmid = apmids[0]
+  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
+| filter in(p.apmid, array($MembershipApps))
+| summarize processes = count(),
+            maxMemGiB = round(max(arrayAvg(mem)) / 1073741824, decimals:2),
+            maxCpuPct = round(max(arrayAvg(cpu)), decimals:1),
+            by:{apmid = p.apmid}
+| sort maxMemGiB desc
