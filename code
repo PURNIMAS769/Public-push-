@@ -1,36 +1,46 @@
-M1: Tags on hosts mentioning Membership or Commercial
+Checks to run
+
+M3: Which apps sit under each portfolio, on namespaces
+
+fetch dt.entity.cloud_application_namespace
+| fields id, name = entity.name, tags
+| expand tag = tags
+| summarize portfolio = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "Portfolio:"), tag))),
+            apmid     = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1]))),
+            by:{id, name}
+| expand p = portfolio
+| filter contains(lower(p), "commercial") or contains(lower(p), "member")
+| expand a = apmid
+| summarize namespaces = countDistinctExact(id), sampleName = takeFirst(name), by:{p, a}
+| sort p asc, namespaces desc
+
+
+M4: The same on hosts
 
 fetch dt.entity.host
 | fields id, tags
 | expand tag = tags
-| filter contains(lower(tag), "member") or contains(lower(tag), "commercial")
-| summarize hosts = countDistinctExact(id), by:{tag}
-| sort hosts desc
-| limit 100
+| summarize portfolio = arrayRemoveNulls(collectDistinct(if(contains(lower(tag), "portfolio:"), tag))),
+            apmid     = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1]))),
+            by:{id}
+| expand p = portfolio
+| filter contains(lower(p), "commercial_markets") or contains(lower(p), "commercial markets")
+      or contains(lower(p), "member")
+| expand a = apmid
+| summarize hosts = countDistinctExact(id), by:{p, a}
+| sort p asc, hosts desc
 
 
-This shows which tag key and value identifies Membership, for example Portfolio:… or a product line tag, and how many hosts carry it. Watch for spelling variants, as with Claims_Modernization and Claims Modernization.
-
-M2: The same check on OpenShift namespaces
-
-fetch dt.entity.cloud_application_namespace
-| fields id, entity.name, tags
-| expand tag = tags
-| filter contains(lower(tag), "member") or contains(lower(tag), "commercial")
-| summarize namespaces = countDistinctExact(id), by:{tag}
-| sort namespaces desc
-| limit 100
-
-
-M3: Applications under that tag, with names Run this after M1 shows the exact tag. Replace <TAG> with the value you find, for example portfolio:commercial markets:
+M5: Which portfolio the Member apps carry
 
 fetch dt.entity.host
-| fields id, tags, tagStr = toString(tags)
-| filter contains(lower(tagStr), "<TAG>")
+| fields id, tags
 | expand tag = tags
-| filter startsWith(tag, "APMID:") or startsWith(tag, "APPName:")
-| summarize hosts = countDistinctExact(id),
-            names = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "APPName:"), splitString(tag, "APPName:")[1]))),
-            by:{apmid = if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1])}
-| filter isNotNull(apmid)
+| summarize portfolio = arrayRemoveNulls(collectDistinct(if(contains(lower(tag), "portfolio:"), tag))),
+            memberApp = arrayRemoveNulls(collectDistinct(if(startsWith(tag, "APPName:") and contains(lower(tag), "member"), tag))),
+            by:{id}
+| filter arraySize(memberApp) > 0
+| fieldsAdd p = if(arraySize(portfolio) == 0, array("(no portfolio tag)"), else: portfolio)
+| expand p
+| summarize hosts = countDistinctExact(id), by:{p}
 | sort hosts desc
