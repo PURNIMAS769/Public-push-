@@ -1,38 +1,16 @@
-E1: databases not ONLINE, with history
+Always On tile for Membership
 
-timeseries st = max(`sql-server.databases.state`),
-           by:{device.name, database}, from:-7d, interval:1h
-| fieldsAdd stClean  = arrayRemoveNulls(st)
-| fieldsAdd nowState = arrayLast(stClean), minState = arrayMin(stClean),
-            hostShort = lower(splitString(device.name, ".")[0])
-| filter nowState > 0
-| lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($MembershipApps))
-    | summarize apps = collectDistinct(apmid), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| filter isNotNull(h.apps)
-| fieldsAdd stateName = if(nowState == 6, "OFFLINE", else: if(nowState == 5, "EMERGENCY",
-                        else: if(nowState == 4, "SUSPECT", else: if(nowState == 3, "RECOVERY_PENDING",
-                        else: if(nowState == 2, "RECOVERING", else: "RESTORING"))))),
-            history   = if(minState == 0, "Recent change", else: "Long-term (7d+)"),
-            apps      = arrayToString(h.apps, delimiter:", ")
-| fields history, stateName, server = device.name, database, apps
-| sort history asc, stateName asc
-
-
-E2: Always On groups on Membership hosts
+It shows only unhealthy rows. Delete the status != "🟢 Healthy" line to see all 150. I haven't run it.
 
 timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true),
-           by:{device.name, availability.database.name,
+           by:{device.name, availability.replica.name, availability.database.name,
                availability.database.synchronization_health,
                availability.database.synchronization_state}, from:-30m
-| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0]),
+            database  = availability.database.name,
+            replica   = availability.replica.name,
+            health    = availability.database.synchronization_health,
+            syncState = availability.database.synchronization_state
 | lookup [
     fetch dt.entity.host
     | fields hostName = entity.name, tags
@@ -44,18 +22,36 @@ timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true
     | summarize apps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | filter isNotNull(h.apps)
-| summarize databases = count(),
-            by:{availability.database.synchronization_health, availability.database.synchronization_state}
+| expand apmid = h.apps
+| fieldsAdd status = if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", "🔴 Critical",
+                     else: if(health == "HEALTHY", "🟢 Healthy", else: "🟠 Warning")),
+            rank   = if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", 1,
+                     else: if(health == "HEALTHY", 3, else: 2))
+| filter status != "🟢 Healthy"
+| fieldsAdd appServerDb = concat(apmid, " | ", device.name, " : ", database)
+| fields status, appServerDb, replica, health, syncState, rank
+| sort rank asc, appServerDb asc
+| fieldsRemove rank
 
 
-No rows means Membership has no Always On groups, and I'd drop that tile. The MSSQL Replication failure alerts may be unrelated, since replication is a different feature.
+Expect about 2 databases, repeated under each app that shares the server. Set the No data message to "All Membership Always On databases healthy".
 
-E3: MSSQL backup age
+Backup coverage check
 
-timeseries age = max(`sql-server.databases.backup.age`, scalar: true),
-           by:{device.name, database, backup_type}, from:-2h
-| filter isNotNull(age)
-| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
+This counts ONLINE Membership databases and how many have a full-backup age. It includes system databases such as master and tempdb, which skew the gap slightly.
+
+timeseries st = max(`sql-server.databases.state`, scalar: true),
+           by:{device.name, database}, from:-30m
+| filter st == 0
+| fieldsAdd key = concat(device.name, "|", database),
+            hostShort = lower(splitString(device.name, ".")[0])
+| lookup [
+    timeseries age = max(`sql-server.databases.backup.age`, scalar: true),
+               by:{device.name, database, backup_type}, from:-2h
+    | filter backup_type == "Full"
+    | fieldsAdd key = concat(device.name, "|", database)
+    | fields key, age
+  ], sourceField: key, lookupField: key, prefix: "b."
 | lookup [
     fetch dt.entity.host
     | fields hostName = entity.name, tags
@@ -67,8 +63,9 @@ timeseries age = max(`sql-server.databases.backup.age`, scalar: true),
     | summarize apps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | filter isNotNull(h.apps)
-| summarize databases = count(), minAge = min(age), avgAge = round(avg(age), decimals:1), maxAge = max(age),
-            by:{backup_type}
+| summarize `Online databases`     = count(),
+            `With full backup age` = countIf(isNotNull(b.age)),
+            `No full backup age`   = countIf(isNull(b.age))
 
 
-Thi
+If No f
