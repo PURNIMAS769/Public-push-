@@ -1,5 +1,37 @@
-D1: PostgreSQL databases on Membership hosts
-timeseries up = avg(postgres.uptime, scalar: true), by:{device.name, device}, from:-2h
+E1: databases not ONLINE, with history
+
+timeseries st = max(`sql-server.databases.state`),
+           by:{device.name, database}, from:-7d, interval:1h
+| fieldsAdd stClean  = arrayRemoveNulls(st)
+| fieldsAdd nowState = arrayLast(stClean), minState = arrayMin(stClean),
+            hostShort = lower(splitString(device.name, ".")[0])
+| filter nowState > 0
+| lookup [
+    fetch dt.entity.host
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($MembershipApps))
+    | summarize apps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| filter isNotNull(h.apps)
+| fieldsAdd stateName = if(nowState == 6, "OFFLINE", else: if(nowState == 5, "EMERGENCY",
+                        else: if(nowState == 4, "SUSPECT", else: if(nowState == 3, "RECOVERY_PENDING",
+                        else: if(nowState == 2, "RECOVERING", else: "RESTORING"))))),
+            history   = if(minState == 0, "Recent change", else: "Long-term (7d+)"),
+            apps      = arrayToString(h.apps, delimiter:", ")
+| fields history, stateName, server = device.name, database, apps
+| sort history asc, stateName asc
+
+
+E2: Always On groups on Membership hosts
+
+timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true),
+           by:{device.name, availability.database.name,
+               availability.database.synchronization_health,
+               availability.database.synchronization_state}, from:-30m
 | fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
@@ -12,15 +44,17 @@ timeseries up = avg(postgres.uptime, scalar: true), by:{device.name, device}, fr
     | summarize apps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | filter isNotNull(h.apps)
-| expand apmid = h.apps
-| summarize databases = countDistinctExact(device),
-            servers   = countDistinctExact(device.name),
-            by:{apmid}
-| sort databases desc
+| summarize databases = count(),
+            by:{availability.database.synchronization_health, availability.database.synchronization_state}
 
-D2: MSSQL databases on Membership hosts
-timeseries st = max(`sql-server.databases.state`, scalar: true),
-           by:{device.name, database}, from:-30m
+
+No rows means Membership has no Always On groups, and I'd drop that tile. The MSSQL Replication failure alerts may be unrelated, since replication is a different feature.
+
+E3: MSSQL backup age
+
+timeseries age = max(`sql-server.databases.backup.age`, scalar: true),
+           by:{device.name, database, backup_type}, from:-2h
+| filter isNotNull(age)
 | fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
@@ -33,61 +67,8 @@ timeseries st = max(`sql-server.databases.state`, scalar: true),
     | summarize apps = collectDistinct(apmid), by:{hostShort}
   ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
 | filter isNotNull(h.apps)
-| expand apmid = h.apps
-| summarize databases = countDistinctExact(concat(device.name, "|", database)),
-            servers   = countDistinctExact(device.name),
-            notOnline = countIf(st > 0),
-            by:{apmid}
-| sort databases desc
+| summarize databases = count(), minAge = min(age), avgAge = round(avg(age), decimals:1), maxAge = max(age),
+            by:{backup_type}
 
 
-For both, send the number of apps and the top rows. If a query returns nothing, Membership has no database of that type on its hosts, and that tile is dropped.
-
-D3: Other database technologies on Membership processes
-
-This catches databases we haven't looked at, such as Oracle or DB2.
-
-fetch dt.entity.process_group_instance
-| fields id, softwareTechnologies, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($MembershipApps))
-| expand tech = softwareTechnologies
-| fieldsAdd t = lower(toString(tech))
-| filter contains(t, "db2") or contains(t, "sql") or contains(t, "oracle") or contains(t, "mongo") or contains(t, "postgre")
-| summarize instances = countDistinctExact(id), apps = countDistinctExact(apmid), by:{t}
-| sort apps desc
-
-
-Ignore sqlite and the Java vendor entries mentioning Oracle, as with Claims.
-
-D4: MQ alerts that name a Membership app
-fetch dt.davis.problems, from:-90d
-| sort timestamp desc
-| dedup display_id
-| filter contains(event.name, "IBMMQ_APP")
-| fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
-| filter in(apmid, array($MembershipApps))
-| summarize alerts = count(), active = countIf(event.status == "ACTIVE"), by:{apmid}
-| sort alerts desc
-
-
-No rows means either Membership doesn't use MQ or its alerts follow a different naming pattern. I can't tell which from this query, so D5 checks the second case.
-
-D5: Which problem types hit Membership apps
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter dt.davis.is_duplicate == false
-| expand tag = entity_tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($MembershipApps))
-| dedup display_id
-| summarize problems = count(),
-            active   = countIf(event.status == "ACTIVE"),
-            apps     = countDistinctExact(apmid),
-            by:{event.name}
-| sort problems desc
-| limit 25
+Thi
