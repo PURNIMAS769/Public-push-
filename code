@@ -1,34 +1,40 @@
-timeseries {rx  = avg(dt.host.net.nic.bytes_rx),
-            tx  = avg(dt.host.net.nic.bytes_tx),
-            lrx = avg(dt.host.net.nic.link_util_rx),
-            ltx = avg(dt.host.net.nic.link_util_tx)},
-           by:{dt.entity.host, dt.entity.network_interface}
-| fieldsAdd rxMbps  = coalesce(arrayAvg(rx), 0) * 8 / 1000000,
-            txMbps  = coalesce(arrayAvg(tx), 0) * 8 / 1000000,
-            peakMbps = (coalesce(arrayMax(rx), 0) + coalesce(arrayMax(tx), 0)) * 8 / 1000000,
-            rxUtil  = coalesce(arrayAvg(lrx), 0),
-            txUtil  = coalesce(arrayAvg(ltx), 0)
-| fieldsAdd totalMbps = rxMbps + txMbps,
-            maxUtil   = if(rxUtil > txUtil, rxUtil, else: txUtil)
-| filter totalMbps > 0
-| lookup [ fetch dt.entity.host | fields id, hostName = entity.name, tags ],
-         sourceField: dt.entity.host, lookupField: id, prefix: "h."
-| lookup [ fetch dt.entity.network_interface | fields id, nicName = entity.name ],
-         sourceField: dt.entity.network_interface, lookupField: id, prefix: "n."
-| expand tag = h.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($ClaimsApps))
-| fieldsAdd appHostNic = concat(apmid, " | ", coalesce(h.hostName, "host n/a"), " : ",
-                                coalesce(n.nicName, dt.entity.network_interface))
-| fields appHostNic,
-         `RX (Mbps)`   = round(rxMbps, decimals:2),
-         `TX (Mbps)`   = round(txMbps, decimals:2),
-         `Peak (Mbps)` = round(peakMbps, decimals:2),
-         `Link util (%)` = round(maxUtil, decimals:2),
-         dt.entity.host, dt.entity.network_interface
-| sort `RX (Mbps)` + `TX (Mbps)` desc
-| limit 15
+is a Claims alert or a shared-platform one. I haven't run it.
+
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| dedup display_id
+| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
+| filter contains(event.name, "IBMMQ")
+      or contains(lower(event.name), "queue manager")
+      or contains(lower(event.name), "queue_manager")
+      or contains(lower(event.name), "dead-letter")
+      or contains(lower(event.name), "dead letter")
+      or contains(lower(toString(affected_entity_types)), "ibmmq")
+// Claims APMID is carried in the alert name (IBMMQ_APP<id>)
+| fieldsAdd nameApmid = if(contains(event.name, "IBMMQ_APP"),
+                           concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8)))
+// readable queue / queue manager names
+| expand eid = affected_entity_ids
+| lookup [ fetch `dt.entity.ibmmq:queue_manager` | fields id, qmName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "qm."
+| lookup [ fetch `dt.entity.ibmmq:local_queue` | fields id, qName = entity.name ],
+         sourceField: eid, lookupField: id, prefix: "lq."
+| fieldsAdd mqEntity = coalesce(lq.qName, qm.qmName)
+| summarize affected = arrayToString(arrayRemoveNulls(collectDistinct(mqEntity)), delimiter:", "),
+            alert    = takeFirst(event.name),
+            category = takeFirst(event.category),
+            started  = takeFirst(event.start),
+            nameApmid = takeFirst(nameApmid),
+            by:{display_id}
+| fieldsAdd isClaims = coalesce(in(nameApmid, array($ClaimsApps)), false)
+| fieldsAdd scope  = if(isClaims, "Claims app", else: "Shared MQ platform / other"),
+            status = "🔴 Active",
+            openFor = now() - started,
+            rank   = if(isClaims, 1, else: 2)
+| fields status, scope, app = coalesce(nameApmid, "-"), alert, affected = coalesce(affected, "-"),
+         category, display_id, openFor, rank
+| sort rank asc, openFor desc
+| fieldsRemove rank
 
 
-Settings
+What the tile sho
