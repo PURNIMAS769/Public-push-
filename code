@@ -1,46 +1,38 @@
-Step 1: the core variable (17 apps)
-
-Create the variable the same way as before: Name MembershipApps, Type Query, Multi-select on, Default select all.
-
-fetch dt.entity.cloud_application_namespace
-| fields tags
-| filter contains(lower(replaceString(toString(tags), "_", " ")), "portfolio:commercial markets")
-| expand tag = tags
-| filter contains(tag, "APMID:")
-| fields apmid = splitString(tag, "APMID:")[1]
-| filter isNotNull(apmid) and matchesPattern(apmid, "'APP' DIGIT{8}")
-| dedup apmid
-| sort apmid asc
-
-
-Step 2: review the host-only candidates
-
-This lists every APMID with how many namespaces and hosts it comes from. Hosts only count when they carry no other portfolio tag, as in the Claims variable.
-
-fetch dt.entity.cloud_application_namespace
-| fields tags
-| filter contains(lower(replaceString(toString(tags), "_", " ")), "portfolio:commercial markets")
-| expand tag = tags
-| filter contains(tag, "APMID:")
-| fields apmid = splitString(tag, "APMID:")[1], src = "namespace", hostName = toString(null)
-| append [
+data record(apmid = array($MembershipApps))
+| expand apmid
+| lookup [
     fetch dt.entity.host
-    | fields id, hostName = entity.name, tags
+    | fields id, tags
     | expand tag = tags
-    | fieldsAdd lt = lower(replaceString(tag, "_", " "))
-    | summarize cmVals    = countDistinctExact(if(contains(lt, "portfolio:commercial markets"), tag)),
-                otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:commercial markets")), tag)),
-                apmids    = collectDistinct(if(contains(tag, "APMID:"), splitString(tag, "APMID:")[1])),
-                by:{id, hostName}
-    | filter cmVals > 0 and otherVals == 0
-    | expand apmid = apmids
-    | fields apmid, src = "host", hostName
-  ]
-| filter isNotNull(apmid) and matchesPattern(apmid, "'APP' DIGIT{8}")
-| summarize namespaces = countIf(src == "namespace"),
-            hosts      = countIf(src == "host"),
-            sampleHost = takeFirst(hostName),
-            by:{apmid}
-| fieldsAdd source = if(namespaces > 0 and hosts > 0, "both",
-                     else: if(namespaces > 0, "namespace", else: "host-only"))
-| sort source asc, hosts desc
+    | filter startsWith(tag, "APMID:")
+    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
+    | summarize hosts = countDistinctExact(id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "h."
+| lookup [
+    fetch dt.entity.service
+    | fields id, tags
+    | expand tag = tags
+    | filter startsWith(tag, "APMID:")
+    | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
+    | filter arraySize(apmids) == 1
+    | fieldsAdd apmid = apmids[0]
+    | summarize services = count(), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "s."
+| lookup [
+    fetch dt.entity.cloud_application_namespace
+    | fields id, tags
+    | expand tag = tags
+    | filter startsWith(tag, "APMID:")
+    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
+    | summarize namespaces = countDistinctExact(id), by:{apmid}
+  ], sourceField: apmid, lookupField: apmid, prefix: "n."
+| fieldsAdd hosts = coalesce(h.hosts, 0), services = coalesce(s.services, 0),
+            namespaces = coalesce(n.namespaces, 0)
+| fieldsAdd coverage = if(services >= 5, "Full stack",
+                       else: if(services > 0, "Thin (1-4 services)",
+                       else: if(hosts > 0 or namespaces > 0, "Hosts / namespaces only", else: "No data")))
+| fields apmid, hosts, services, namespaces, coverage
+| sort services desc
+
+
+This returns 17 rows. It tells
