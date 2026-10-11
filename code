@@ -1,94 +1,82 @@
-Section 1 tiles, with $MembershipApps
-
-The structure matches Claims. Tile 1.3 is rewritten, because the Claims version filtered on portfolio:claims.
-
-1.1 Applications in portfolio (single value)
-
-data record(apmid = array($MembershipApps))
-| fields apps = arraySize(apmid)
-
-
-Expected result: 17.
-
-1.2 Monitoring coverage quality (donut)
-
-data record(apmid = array($MembershipApps))
-| expand apmid
+D1: PostgreSQL databases on Membership hosts
+timeseries up = avg(postgres.uptime, scalar: true), by:{device.name, device}, from:-2h
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
     fetch dt.entity.host
-    | fields id, tags
-    | expand tag = tags
-    | filter startsWith(tag, "APMID:")
-    | fieldsAdd apmid = splitString(tag, "APMID:")[1]
-    | summarize hosts = countDistinctExact(id), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "h."
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($MembershipApps))
+    | summarize apps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| filter isNotNull(h.apps)
+| expand apmid = h.apps
+| summarize databases = countDistinctExact(device),
+            servers   = countDistinctExact(device.name),
+            by:{apmid}
+| sort databases desc
+
+D2: MSSQL databases on Membership hosts
+timeseries st = max(`sql-server.databases.state`, scalar: true),
+           by:{device.name, database}, from:-30m
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
-    fetch dt.entity.service
-    | fields id, tags
-    | expand tag = tags
-    | filter startsWith(tag, "APMID:")
-    | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
-    | filter arraySize(apmids) == 1
-    | fieldsAdd apmid = apmids[0]
-    | summarize services = count(), by:{apmid}
-  ], sourceField: apmid, lookupField: apmid, prefix: "s."
-| fieldsAdd hosts = coalesce(h.hosts, 0), services = coalesce(s.services, 0)
-| fieldsAdd coverage = if(services >= 5, "Full stack",
-                       else: if(services > 0, "Thin (1-4 services)",
-                       else: "Hosts / namespaces only"))
-| summarize apps = count(), by:{coverage}
+    fetch dt.entity.host
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($MembershipApps))
+    | summarize apps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| filter isNotNull(h.apps)
+| expand apmid = h.apps
+| summarize databases = countDistinctExact(concat(device.name, "|", database)),
+            servers   = countDistinctExact(device.name),
+            notOnline = countIf(st > 0),
+            by:{apmid}
+| sort databases desc
 
 
-Expected result: 5, 9 and 3, which add up to 17.
+For both, send the number of apps and the top rows. If a query returns nothing, Membership has no database of that type on its hosts, and that tile is dropped.
 
-1.3 Hosts: Commercial Markets-only vs shared (bar)
+D3: Other database technologies on Membership processes
 
-fetch dt.entity.host
-| fields id, tags
+This catches databases we haven't looked at, such as Oracle or DB2.
+
+fetch dt.entity.process_group_instance
+| fields id, softwareTechnologies, tags
 | expand tag = tags
-| fieldsAdd lt = lower(replaceString(tag, "_", " "))
-| summarize cmVals    = countDistinctExact(if(contains(lt, "portfolio:commercial markets"), tag)),
-            otherVals = countDistinctExact(if(contains(lt, "portfolio:") and not(contains(lt, "portfolio:commercial markets")), tag)),
-            apmids    = collectDistinct(if(startsWith(tag, "APMID:"), splitString(tag, "APMID:")[1])),
-            by:{id}
-| expand apmid = apmids
-| filter in(apmid, array($MembershipApps))
-| dedup id
-| fieldsAdd hostType = if(cmVals > 0 and otherVals == 0, "Commercial Markets-only",
-                       else: if(cmVals > 0, "Shared with other portfolios",
-                       else: "Other portfolio / no portfolio tag"))
-| summarize hosts = count(), by:{hostType}
-
-
-1.4 Active problems (single value)
-
-fetch dt.davis.problems, from:-30d
-| sort timestamp desc
-| dedup display_id
-| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| expand tag = entity_tags
 | filter startsWith(tag, "APMID:")
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($MembershipApps))
-| summarize activeProblems = countDistinctExact(display_id)
+| expand tech = softwareTechnologies
+| fieldsAdd t = lower(toString(tech))
+| filter contains(t, "db2") or contains(t, "sql") or contains(t, "oracle") or contains(t, "mongo") or contains(t, "postgre")
+| summarize instances = countDistinctExact(id), apps = countDistinctExact(apmid), by:{t}
+| sort apps desc
 
 
-1.5 Apps with active problems (single value)
+Ignore sqlite and the Java vendor entries mentioning Oracle, as with Claims.
 
-fetch dt.davis.problems, from:-30d
+D4: MQ alerts that name a Membership app
+fetch dt.davis.problems, from:-90d
 | sort timestamp desc
 | dedup display_id
-| filter event.status == "ACTIVE" and dt.davis.is_duplicate == false
-| expand tag = entity_tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter contains(event.name, "IBMMQ_APP")
+| fieldsAdd apmid = concat("APP", substring(splitString(event.name, "IBMMQ_APP")[1], from:0, to:8))
 | filter in(apmid, array($MembershipApps))
-| summarize appsImpacted = countDistinctExact(apmid)
+| summarize alerts = count(), active = countIf(event.status == "ACTIVE"), by:{apmid}
+| sort alerts desc
 
 
-1.6 Problem trend, per hour for 24 hours (stacked area or line)
+No rows means either Membership doesn't use MQ or its alerts follow a different naming pattern. I can't tell which from this query, so D5 checks the second case.
 
-fetch dt.davis.problems, from:-24h
+D5: Which problem types hit Membership apps
+fetch dt.davis.problems, from:-30d
 | sort timestamp desc
 | dedup display_id
 | filter dt.davis.is_duplicate == false
@@ -97,10 +85,9 @@ fetch dt.davis.problems, from:-24h
 | fieldsAdd apmid = splitString(tag, "APMID:")[1]
 | filter in(apmid, array($MembershipApps))
 | dedup display_id
-| fieldsAdd impact = arrayToString(dt.davis.impact_level, delimiter:", ")
-| makeTimeseries problems = count(), by:{impact},
-                 time:event.start, interval:1h,
-                 from:now()-24h, to:now(), nonempty:true
-
-
-T
+| summarize problems = count(),
+            active   = countIf(event.status == "ACTIVE"),
+            apps     = countDistinctExact(apmid),
+            by:{event.name}
+| sort problems desc
+| limit 25
