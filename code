@@ -1,56 +1,31 @@
-S1: Services per Membership app, by type
-
-fetch dt.entity.service
-| fields id, serviceType, tags
-| expand tag = tags
-| filter startsWith(tag, "APMID:")
-| summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id, serviceType}
-| filter arraySize(apmids) == 1
-| fieldsAdd apmid = apmids[0]
-| filter in(apmid, array($MembershipApps))
-| summarize services = count(), apps = countDistinctExact(apmid), by:{serviceType}
-| sort services desc
-
-
-This shows how many are web request services and how many are database or background services. Only web request and web services feed the failure-rate and slow-service tiles.
-
-S2: JVM coverage on Membership processes
-
-timeseries gc = avg(dt.runtime.jvm.gc.suspension_time, scalar: true),
-           by:{dt.entity.process_group_instance}, from:-2h
+timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true),
+           by:{device.name, availability.replica.name, availability.database.name,
+               availability.database.synchronization_health,
+               availability.database.synchronization_state}, from:-30m
+| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
 | lookup [
-    fetch dt.entity.process_group_instance
-    | fields id, tags
-    | expand tag = tags
-    | filter startsWith(tag, "APMID:")
-    | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
-    | filter arraySize(apmids) == 1
-    | fieldsAdd apmid = apmids[0]
-  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
-| filter in(p.apmid, array($MembershipApps))
-| summarize jvms = count(), apps = countDistinctExact(p.apmid),
-            avgGc = round(avg(gc), decimals:2), maxGc = round(max(gc), decimals:2)
+    fetch dt.entity.host
+    | fields hostName = entity.name, tags
+    | expand t = tags
+    | filter startsWith(t, "APMID:")
+    | fieldsAdd apmid = splitString(t, "APMID:")[1],
+                hostShort = lower(splitString(hostName, ".")[0])
+    | filter in(apmid, array($MembershipApps))
+    | summarize apps = collectDistinct(apmid), by:{hostShort}
+  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
+| filter isNotNull(h.apps)
+| expand apmid = h.apps
+| fieldsAdd health    = availability.database.synchronization_health,
+            syncState = availability.database.synchronization_state
+| fieldsAdd status = if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", "🔴 Critical",
+                     else: if(health == "HEALTHY", "🟢 Healthy", else: "🟠 Warning")),
+            rank   = if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", 1,
+                     else: if(health == "HEALTHY", 3, else: 2))
+| filter status != "🟢 Healthy"
+| fieldsAdd appServerDb = concat(apmid, " | ", device.name, " : ", availability.database.name)
+| fields status, appServerDb, replica = availability.replica.name, health, syncState, rank
+| sort rank asc, appServerDb asc
+| fieldsRemove rank
 
 
-If apps is very low, I'd drop the JVM tile. If it's high, maxGc helps set a threshold.
-
-S3: Process-level coverage and size
-
-timeseries {mem = avg(dt.process.memory.working_set_size),
-            cpu = avg(dt.process.cpu.usage)},
-           by:{dt.entity.process_group_instance}, from:-2h
-| lookup [
-    fetch dt.entity.process_group_instance
-    | fields id, tags
-    | expand tag = tags
-    | filter startsWith(tag, "APMID:")
-    | summarize apmids = collectDistinct(splitString(tag, "APMID:")[1]), by:{id}
-    | filter arraySize(apmids) == 1
-    | fieldsAdd apmid = apmids[0]
-  ], sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "p."
-| filter in(p.apmid, array($MembershipApps))
-| summarize processes = count(),
-            maxMemGiB = round(max(arrayAvg(mem)) / 1073741824, decimals:2),
-            maxCpuPct = round(max(arrayAvg(cpu)), decimals:1),
-            by:{apmid = p.apmid}
-| sort maxMemGiB desc
+Two other changes:
