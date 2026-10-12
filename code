@@ -1,31 +1,17 @@
-timeseries h = max(`sql-server.always-on.db.synchronizationHealth`, scalar: true),
-           by:{device.name, availability.replica.name, availability.database.name,
-               availability.database.synchronization_health,
-               availability.database.synchronization_state}, from:-30m
-| fieldsAdd hostShort = lower(splitString(device.name, ".")[0])
-| lookup [
-    fetch dt.entity.host
-    | fields hostName = entity.name, tags
-    | expand t = tags
-    | filter startsWith(t, "APMID:")
-    | fieldsAdd apmid = splitString(t, "APMID:")[1],
-                hostShort = lower(splitString(hostName, ".")[0])
-    | filter in(apmid, array($MembershipApps))
-    | summarize apps = collectDistinct(apmid), by:{hostShort}
-  ], sourceField: hostShort, lookupField: hostShort, prefix: "h."
-| filter isNotNull(h.apps)
-| expand apmid = h.apps
-| fieldsAdd health    = availability.database.synchronization_health,
-            syncState = availability.database.synchronization_state
-| fieldsAdd status = if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", "🔴 Critical",
-                     else: if(health == "HEALTHY", "🟢 Healthy", else: "🟠 Warning")),
-            rank   = if(health == "NOT_HEALTHY" or syncState == "NOT SYNCHRONIZING", 1,
-                     else: if(health == "HEALTHY", 3, else: 2))
-| filter status != "🟢 Healthy"
-| fieldsAdd appServerDb = concat(apmid, " | ", device.name, " : ", availability.database.name)
-| fields status, appServerDb, replica = availability.replica.name, health, syncState, rank
-| sort rank asc, appServerDb asc
-| fieldsRemove rank
+timeseries {re = avg(dt.process.network.packets.re_tx_aggr),
+            tx = avg(dt.process.network.packets.tx)},
+           by:{dt.entity.process_group_instance}, from:-2h
+| fieldsAdd reRate = coalesce(arrayAvg(re), 0),
+            txRate = coalesce(arrayAvg(tx), 0)
+| lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
+         sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
+| expand tag = e.tags
+| filter startsWith(tag, "APMID:")
+| fieldsAdd apmid = splitString(tag, "APMID:")[1]
+| filter in(apmid, array($MembershipApps))
+| summarize processes = countDistinctExact(dt.entity.process_group_instance),
+            reRate = sum(reRate), txRate = sum(txRate), by:{apmid}
+| fieldsAdd retransPct = if(txRate > 0, round(100.0 * reRate / txRate, decimals:2), else: 0.0)
+| sort retransPct desc
 
-
-Two other changes:
+Rows with small
