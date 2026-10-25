@@ -1,1 +1,3 @@
-oc adm node-logs arost06-9rjcl-worker-southcentralus1-e48sv5-c796k -u crio --since="2026-10-24 16:00:00" --tail=200
+oc debug node/arost06-9rjcl-worker-southcentralus1-e48sv5-c796k
+chroot /host
+systemctl status crio.service --no-pager -l
