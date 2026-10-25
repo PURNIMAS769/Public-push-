@@ -1,3 +1,1 @@
-oc debug node/arost06-9rjcl-worker-southcentralus1-e48sv5-c796k
-chroot /host
-systemctl status crio.service --no-pager -l
+Worker MCP Updating for over 24 hours; one node NotReady with container runtime timeouts and unhealthy PLEG
