@@ -1,17 +1,1 @@
-timeseries {re = avg(dt.process.network.packets.re_tx_aggr),
-            tx = avg(dt.process.network.packets.tx)},
-           by:{dt.entity.process_group_instance}, from:-2h
-| fieldsAdd reRate = coalesce(arrayAvg(re), 0),
-            txRate = coalesce(arrayAvg(tx), 0)
-| lookup [ fetch dt.entity.process_group_instance | fields id, tags ],
-         sourceField: dt.entity.process_group_instance, lookupField: id, prefix: "e."
-| expand tag = e.tags
-| filter startsWith(tag, "APMID:")
-| fieldsAdd apmid = splitString(tag, "APMID:")[1]
-| filter in(apmid, array($MembershipApps))
-| summarize processes = countDistinctExact(dt.entity.process_group_instance),
-            reRate = sum(reRate), txRate = sum(txRate), by:{apmid}
-| fieldsAdd retransPct = if(txRate > 0, round(100.0 * reRate / txRate, decimals:2), else: 0.0)
-| sort retransPct desc
-
-Rows with small
+oc adm node-logs arost06-9rjcl-worker-southcentralus1-e48sv5-c796k -u crio --since="2026-10-24T16:00:00Z" --tail=300
