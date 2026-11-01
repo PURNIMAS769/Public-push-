@@ -1,27 +1,4 @@
-Issue description
-
-The worker MachineConfigPool (MCP) on [cluster name] has remained in Updating state for over 24 hours. All 6 workers are counted as updated, but one worker remains NotReady.
-
-Affected node: arost06-9rjcl-worker-southcentralus1-e48sv5-c796k
- Node IP: 10.83.68.7
- NotReady transition: October 24, 2026, at 16:49 UTC.
-
-Current status
-Total workers: 6
-Updated workers: 6
-Ready workers: 5
-Unavailable workers: 1
-Degraded workers: 0
-The affected node’s current and desired MachineConfig match, and its MachineConfig state is Done.
-Errors observed
-
-Kubelet logs show:
-
-Container runtime is down
-PLEG is not healthy
-rpc error: code = DeadlineExceeded desc = context deadline exceeded
-Container runtime sanity check failed
-Failures to list containers, pod sandboxes and images.
-Missing image filesystem statistics and image garbage collection failures.
-Pod health-check timeouts across application and platform pods.
-Skipping pod synchronization due to the unhealthy runtime.
+Hi Brian, thanks for the steps. We are unable to run them because we cannot access the node. 
+SSH to 10.93.22.94 fails with "Connection closed by 10.93.22.94 port 22", 
+and oc debug node also does not work. Could you please suggest an alternative way to collect the sosreport 
+or logs from this node?
