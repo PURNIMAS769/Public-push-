@@ -1,1 +1,7 @@
-ADMINSIMP 27X TRANSACTIONS
+| fieldsAdd queue_manager = cells[queue_manager], severity = cells[severity]
+| lookup [
+    fetch `dt.entity.ibmmq:queue_manager`
+    | fields queue_manager = entity.name, qm_id = id
+  ], sourceField:queue_manager, lookupField:queue_manager, fields:{qm_id}
+| fieldsAdd `dt.entity.ibmmq:queue_manager` = qm_id
+| fields queue_manager, `dt.entity.ibmmq:queue_manager`, severity
