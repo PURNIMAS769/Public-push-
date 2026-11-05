@@ -27,6 +27,14 @@ data record(queue_manager = "HCSC1P"),
 | summarize hcsc_down = countIf(queue_manager == "HCSC1P" and qm_down),
             m1_down = countIf(queue_manager == "MULEPRD1" and qm_down),
             m3_down = countIf(queue_manager == "MULEPRD3" and qm_down)
-| fieldsAdd status = if(hcsc_down > 0 or (m1_down > 0 and m3_down > 0), "RED",
-                     else: if(m1_down > 0 or m3_down > 0, "AMBER", else: "GREEN"))
-| fields status
+| fieldsAdd cells = array(
+    record(queue_manager = "HCSC1P",
+           severity = if(hcsc_down > 0, 2, else: 0)),
+    record(queue_manager = "MULEPRD1",
+           severity = if(m1_down > 0 and m3_down > 0, 2, else: if(m1_down > 0, 1, else: 0))),
+    record(queue_manager = "MULEPRD3",
+           severity = if(m1_down > 0 and m3_down > 0, 2, else: if(m3_down > 0, 1, else: 0)))
+  )
+| expand cells
+| fieldsAdd queue_manager = cells[queue_manager], severity = cells[severity]
+| fields queue_manager, severity
