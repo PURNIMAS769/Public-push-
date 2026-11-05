@@ -1,7 +1,14 @@
-timeseries availability = avg(ibmmq.queue_manager.availability),
-  by:{`dt.entity.ibmmq:queue_manager`}
-| fieldsAdd queue_manager = entityName(`dt.entity.ibmmq:queue_manager`)
-| fields queue_manager, availability
-| filter in(queue_manager,
-    array("HCSC1P", "MULEPRD1", "MULEPRD3"))
-| sort queue_manager asc
+fetch dt.davis.problems, from:-30d
+| sort timestamp desc
+| summarize event.status = takeFirst(event.status),
+            event.name = takeFirst(event.name),
+            event.category = takeFirst(event.category),
+            event.start = takeFirst(event.start),
+            affected_entity_ids = takeFirst(affected_entity_ids),
+            by:{display_id}
+| filter event.status == "ACTIVE"
+| expand affected_entity_ids
+| fieldsAdd queue_manager = entityName(affected_entity_ids, "dt.entity.ibmmq:queue_manager")
+| filter in(queue_manager, array("HCSC1P", "MULEPRD1", "MULEPRD3"))
+| fields display_id, event.name, event.category, queue_manager, event.start
+| sort event.start desc
