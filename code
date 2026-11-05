@@ -1,4 +1,7 @@
-Hi Brian, thanks for the steps. We are unable to run them because we cannot access the node. 
-SSH to 10.93.22.94 fails with "Connection closed by 10.93.22.94 port 22", 
-and oc debug node also does not work. Could you please suggest an alternative way to collect the sosreport 
-or logs from this node?
+timeseries availability = avg(ibmmq.queue_manager.availability),
+  by:{`dt.entity.ibmmq:queue_manager`}
+| fieldsAdd queue_manager = entityName(`dt.entity.ibmmq:queue_manager`)
+| fields queue_manager, availability
+| filter in(queue_manager,
+    array("HCSC1P", "MULEPRD1", "MULEPRD3"))
+| sort queue_manager asc
