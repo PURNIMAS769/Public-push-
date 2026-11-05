@@ -7,8 +7,9 @@ fetch dt.davis.problems, from:-30d
             affected_entity_ids = takeFirst(affected_entity_ids),
             by:{display_id}
 | filter event.status == "ACTIVE"
+| filter event.category == "AVAILABILITY"
+| filter contains(event.name, "Queue_Manager is unavailable")
 | expand affected_entity_ids
 | fieldsAdd queue_manager = entityName(affected_entity_ids, "dt.entity.ibmmq:queue_manager")
 | filter in(queue_manager, array("HCSC1P", "MULEPRD1", "MULEPRD3"))
-| fields display_id, event.name, event.category, queue_manager, event.start
-| sort event.start desc
+| fields display_id, event.name, queue_manager, event.start
