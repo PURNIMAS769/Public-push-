@@ -1,10 +1,6 @@
-metrics
-| filter startsWith(metric.key, "cloud.azure.microsoft_sql.managedinstances")
-| summarize series_count = count(), by:{metric.key}
-| sort metric.key asc
-
-timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-           by:{dt.entity.custom_device}
+timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent)
 | fieldsAdd avg_cpu = arrayAvg(cpu)
-| fieldsAdd mi_name = entityName(dt.entity.custom_device)
-| sort avg_cpu desc
+
+metrics
+| filter metric.key == "cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent"
+| filter isNull(dt.entity.custom_device)
