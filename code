@@ -1,7 +1,14 @@
-| fieldsAdd queue_manager = cells[queue_manager], severity = cells[severity]
-| lookup [
-    fetch `dt.entity.ibmmq:queue_manager`
-    | fields queue_manager = entity.name, qm_id = id
-  ], sourceField:queue_manager, lookupField:queue_manager, fields:{qm_id}
-| fieldsAdd `dt.entity.ibmmq:queue_manager` = qm_id
-| fields queue_manager, `dt.entity.ibmmq:queue_manager`, severity
+metrics
+| filter startsWith(metric.key, "ext:cloud.azure.microsoft_sql.managedinstances")
+| sort metric.key asc
+
+metrics
+| filter contains(metric.key, "managedinstances")
+| sort metric.key asc
+
+timeseries io_requests = avg(`ext:cloud.azure.microsoft_sql.managedinstances.io_requests`),
+           by:{dt.entity.custom_device}
+| fieldsAdd avg_io = arrayAvg(io_requests)
+| fieldsAdd mi_name = entityName(dt.entity.custom_device)
+| sort avg_io desc
+| limit 20
