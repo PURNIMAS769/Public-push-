@@ -1,6 +1,6 @@
-timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent)
+timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
+           by:{dt.da.source, azure.resource.name, dt.entity.custom_device}
 | fieldsAdd avg_cpu = arrayAvg(cpu)
-
-metrics
-| filter metric.key == "cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent"
-| filter isNull(dt.entity.custom_device)
+| fieldsAdd mi_name = if(isNotNull(dt.entity.custom_device), entityName(dt.entity.custom_device), else: azure.resource.name)
+| fields dt.da.source, mi_name, azure.resource.name, dt.entity.custom_device, avg_cpu
+| sort mi_name asc
