@@ -1,6 +1,15 @@
-timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-           by:{azure.resource.name, azure.resource.group, azure.location},
-           filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd avg_cpu = arrayAvg(cpu)
-| fields azure.resource.name, azure.resource.group, azure.location, avg_cpu
-| sort avg_cpu desc
+metrics
+| filter contains(metric.key, "microsoft_sql")
+| summarize series_count = count(), by:{metric.key}
+| sort metric.key asc
+
+metrics
+| filter contains(azure.resource.group, "app00046507")
+| summarize series_count = count(), by:{metric.key, azure.resource.type}
+| sort azure.resource.type asc, metric.key asc
+
+
+metrics
+| filter contains(metric.key, "sql-server") or contains(metric.key, "mssql") or contains(metric.key, "sqlserver")
+| summarize series_count = count(), by:{metric.key}
+| sort metric.key asc
