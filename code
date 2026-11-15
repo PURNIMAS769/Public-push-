@@ -1,15 +1,7 @@
 metrics
-| filter contains(metric.key, "microsoft_sql")
-| summarize series_count = count(), by:{metric.key}
-| sort metric.key asc
+| filter metric.key == "sql-server.uptime"
+| limit 20
 
 metrics
-| filter contains(azure.resource.group, "app00046507")
-| summarize series_count = count(), by:{metric.key, azure.resource.type}
-| sort azure.resource.type asc, metric.key asc
-
-
-metrics
-| filter contains(metric.key, "sql-server") or contains(metric.key, "mssql") or contains(metric.key, "sqlserver")
-| summarize series_count = count(), by:{metric.key}
-| sort metric.key asc
+| filter metric.key == "sql-server.uptime"
+| search "miedhsq" or "mizvvsq" or "autosqmi" or "mi76tisq" or "mi109msq"
