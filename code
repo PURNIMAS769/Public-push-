@@ -1,1 +1,29 @@
-As checked, data from these servers is not being populated in Dynatrace, due to which the DQL query is unable to fetch the server details.
+Option 1: Clear and professional
+
+Hi Team,
+
+We are receiving high memory and CPU utilization alerts on node arop04-ghgsn-worker-northcentralus-arize-44c5w in the P04 cluster. Upon checking, we found that druid-historical-1 is consuming high memory and CPU.
+
+Could you please have a look and investigate the issue?
+
+Thanks & Regards,
+
+Option 2: Simple and direct
+
+Hi Team,
+
+We are getting memory and CPU utilization alerts on node arop04-ghgsn-worker-northcentralus-arize-44c5w in the P04 cluster. We checked and found that druid-historical-1 is consuming high memory and CPU.
+
+Could you please check and let us know what is causing the high utilization?
+
+Thanks & Regards,
+
+Option 3: More technical
+
+Hi Team,
+
+We are receiving high CPU and memory utilization alerts for node arop04-ghgsn-worker-northcentralus-arize-44c5w in the P04 cluster. During our initial investigation, we observed that druid-historical-1 is consuming a significant amount of CPU and memory resources.
+
+Could you please investigate the resource consumption and advise on the cause and any required action?
+
+Thanks & Regards,
