@@ -1,7 +1,1 @@
-metrics
-| filter metric.key == "sql-server.uptime"
-| limit 20
-
-metrics
-| filter metric.key == "sql-server.uptime"
-| search "miedhsq" or "mizvvsq" or "autosqmi" or "mi76tisq" or "mi109msq"
+As checked, data from these servers is not being populated in Dynatrace, due to which the DQL query is unable to fetch the server details.
