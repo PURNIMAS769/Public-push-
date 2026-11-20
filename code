@@ -5,9 +5,16 @@ timeseries avail = avg(dt.host.availability), by:{dt.entity.host}, from:-30m
 | fieldsAdd availability_pct = round(arrayAvg(avail))
 | fieldsAdd host_name = entityName(dt.entity.host)
 | filter isNotNull(host_name)
+
+// --- Exclusions (short-name match, works with or without domain) ---
+| fieldsAdd host_key = toLowercase(splitString(host_name, ".")[0])
+| filter not(in(host_key, array(
+    "pwausxtsmmgt03", "pwausligapp03", "pwauslmdmapp07", "pwausldsapp13",
+    "pwausltsmoc01", "pwausligapp04", "pwausltsmmgt21", "pwausldsapp16"
+  )))
 | filter in(host_name, array($host))
 
-// --- Step 2: Active problems, resolved to a host NAME ---
+// --- Step 2: Active problems, resolved to a host key ---
 | lookup [
     fetch dt.davis.problems
     | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
@@ -27,30 +34,20 @@ timeseries avail = avg(dt.host.availability), by:{dt.entity.host}, from:-30m
         fetch `dt.entity.sql:db2_host`
         | fields id, db2_hostname = Hostname
       ], sourceField:resolved_id, lookupField:id, prefix:"h_"
-    // problems raised directly on the OneAgent host -> host name
+    // OneAgent host id -> hostname
     | lookup [
         fetch dt.entity.host
         | fields id, oa_hostname = entity.name
       ], sourceField:resolved_id, lookupField:id, prefix:"o_"
     | fieldsAdd problem_host = coalesce(h_db2_hostname, o_oa_hostname)
     | filter isNotNull(problem_host)
-    | summarize problem_count = countDistinctExact(event.id), by:{problem_host}
-  ], sourceField:host_name, lookupField:problem_host, prefix:"p_"
+    // same short-name key as Step 1, so FQDN vs short name never breaks the match
+    | fieldsAdd problem_key = toLowercase(splitString(problem_host, ".")[0])
+    | summarize problem_count = countDistinctExact(event.id), by:{problem_key}
+  ], sourceField:host_key, lookupField:problem_key, prefix:"p_"
 
 // --- Step 3: Verdict ---
-| fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_problem_host), "HEALTHY", else:"UNHEALTHY")
+| fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_problem_key), "HEALTHY", else:"UNHEALTHY")
 | fields host_name, availability_pct, p_problem_count, health_status, dt.entity.host
 | sort health_status desc, availability_pct asc
 | limit 2000
-
-
-| filter not(in(toLowercase(host_name), array(
-    "pwausxtsmmgt03.app.hcscint.net",
-    "pwausligapp03.app.hcscint.net",
-    "pwauslmdmapp07.app.hcscint.net",
-    "pwausldsapp13.app.hcscint.net",
-    "pwausltsmoc01.app.hcscint.net",
-    "pwausligapp04.app.hcscint.net",
-    "pwausltsmmgt21.app.hcscint.net",
-    "pwausldsapp16.app.hcscint.net"
-)))
