@@ -1,6 +1,19 @@
-timeseries r = sum(db2.bp.total_logical_reads.count),
-  by:{`dt.entity.sql:db2_host`, device.name, device.address, instance_name}, from:-24h
-| fieldsAdd db2_host_name = entityName(`dt.entity.sql:db2_host`)
-| fields db2_host_name, device.name, device.address, instance_name
-| sort db2_host_name asc
-| limit 200
+timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
+  by:{`dt.entity.sql:db2_host`}, interval:5m
+| lookup [
+    fetch `dt.entity.sql:db2_host`
+    | fieldsAdd host_key = lower(splitString(Hostname, ".")[0])
+    | fields id, host_key
+  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
+| filter isNotNull(h_host_key)
+| lookup [
+    fetch dt.entity.host
+    | filter in(id, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
+        or in(id, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
+    | fieldsAdd host_name = entity.name
+    | filter in(host_name, array($host))
+    | fieldsAdd host_key = lower(splitString(host_name, ".")[0])
+    | fields host_key, selected_host = host_name
+  ], sourceField:h_host_key, lookupField:host_key, prefix:"s_"
+| filter isNotNull(s_selected_host)
+| fields timeframe, interval, host = s_selected_host, logical_reads, `dt.entity.sql:db2_host`
