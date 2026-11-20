@@ -1,10 +1,9 @@
-fetch `dt.entity.sql:db2_instance`, from:-24h
-| fieldsAdd instance_id = id, instance_name = entity.name
+timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
+  by:{`dt.entity.sql:db2_host`}, interval:5m
 | lookup [
-    timeseries r = sum(db2.bp.total_logical_reads.count),
-      by:{`dt.entity.sql:db2_instance`}, from:-24h
-    | fieldsAdd instance_id = `dt.entity.sql:db2_instance`
-    | fields instance_id, has_metric = true
-  ], sourceField:instance_id, lookupField:instance_id, prefix:"m_"
-| fieldsAdd reports_metric = if(isNotNull(m_has_metric), "YES", else:"NO")
-| summarize instances = count(), by:{reports_metric}
+    fetch `dt.entity.sql:db2_host`
+    | fields id, host_name = Hostname
+  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
+| filter isNotNull(h_host_name)
+| filter in(h_host_name, array($host))
+| fields timeframe, interval, host = h_host_name, logical_reads, `dt.entity.sql:db2_host`
