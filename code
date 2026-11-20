@@ -1,53 +1,13 @@
-// --- Step 1: Hosts from tags (AIXDB2 / LinuxDB2) + availability ---
-timeseries avail = avg(dt.host.availability), by:{dt.entity.host}, from:-30m
-| filter in(dt.entity.host, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
-    or in(dt.entity.host, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
-| fieldsAdd availability_pct = round(arrayAvg(avail))
-| fieldsAdd host_name = entityName(dt.entity.host)
+fetch dt.entity.host
+| filter in(id, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
+    or in(id, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
+| fieldsAdd host_name = entity.name
 | filter isNotNull(host_name)
-
-// --- Exclusions (short-name match, works with or without domain) ---
 | fieldsAdd host_key = toLowercase(splitString(host_name, ".")[0])
 | filter not(in(host_key, array(
     "pwausxtsmmgt03", "pwausligapp03", "pwauslmdmapp07", "pwausldsapp13",
     "pwausltsmoc01", "pwausligapp04", "pwausltsmmgt21", "pwausldsapp16"
   )))
-| filter in(host_name, array($host))
-
-// --- Step 2: Active problems, resolved to a host key ---
-| lookup [
-    fetch dt.davis.problems
-    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-    | filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
-       or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
-       or matchesValue(affected_entity_types, "dt.entity.host")
-    | expand affected_entity_ids
-    // instance-level problem -> its parent db2_host
-    | lookup [
-        fetch `dt.entity.sql:db2_instance`
-        | fieldsAdd host_ref = runs_on[`dt.entity.sql:db2_host`]
-        | fields id, host_ref
-      ], sourceField:affected_entity_ids, lookupField:id, prefix:"i_"
-    | fieldsAdd resolved_id = if(isNotNull(i_host_ref), i_host_ref, else: affected_entity_ids)
-    // db2_host id -> hostname
-    | lookup [
-        fetch `dt.entity.sql:db2_host`
-        | fields id, db2_hostname = Hostname
-      ], sourceField:resolved_id, lookupField:id, prefix:"h_"
-    // OneAgent host id -> hostname
-    | lookup [
-        fetch dt.entity.host
-        | fields id, oa_hostname = entity.name
-      ], sourceField:resolved_id, lookupField:id, prefix:"o_"
-    | fieldsAdd problem_host = coalesce(h_db2_hostname, o_oa_hostname)
-    | filter isNotNull(problem_host)
-    // same short-name key as Step 1, so FQDN vs short name never breaks the match
-    | fieldsAdd problem_key = toLowercase(splitString(problem_host, ".")[0])
-    | summarize problem_count = countDistinctExact(event.id), by:{problem_key}
-  ], sourceField:host_key, lookupField:problem_key, prefix:"p_"
-
-// --- Step 3: Verdict ---
-| fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_problem_key), "HEALTHY", else:"UNHEALTHY")
-| fields host_name, availability_pct, p_problem_count, health_status, dt.entity.host
-| sort health_status desc, availability_pct asc
-| limit 2000
+| summarize count(), by:{host_name}
+| fields host_name
+| sort host_name asc
