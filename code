@@ -1,24 +1,10 @@
-timeseries mem = avg(db2.memory_usage),
-  by:{`dt.entity.sql:db2_host`} //, from:-2h
-| fieldsAdd mem_pct = round(arrayAvg(mem), decimals:1)
-// db2_host id -> hostname (short-name key)
+fetch `dt.entity.sql:db2_instance`, from:-24h
+| fieldsAdd instance_id = id, instance_name = entity.name
 | lookup [
-    fetch `dt.entity.sql:db2_host`
-    | fieldsAdd host_key = toLowercase(splitString(Hostname, ".")[0])
-    | fields id, host_key
-  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
-| filter isNotNull(h_host_key)
-// keep only the tag-based hosts selected in $host (AIXDB2 / LinuxDB2, minus excluded servers)
-| lookup [
-    fetch dt.entity.host
-    | filter in(id, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
-        or in(id, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
-    | fieldsAdd host_name = entity.name
-    | filter in(host_name, array($host))
-    | fieldsAdd host_key = toLowercase(splitString(host_name, ".")[0])
-    | fields host_key, selected_host = host_name
-  ], sourceField:h_host_key, lookupField:host_key, prefix:"s_"
-| filter isNotNull(s_selected_host)
-| fields Host = s_selected_host, mem_pct, `dt.entity.sql:db2_host`
-| sort mem_pct desc
-| limit 20
+    timeseries r = sum(db2.bp.total_logical_reads.count),
+      by:{`dt.entity.sql:db2_instance`}, from:-24h
+    | fieldsAdd instance_id = `dt.entity.sql:db2_instance`
+    | fields instance_id, has_metric = true
+  ], sourceField:instance_id, lookupField:instance_id, prefix:"m_"
+| fieldsAdd reports_metric = if(isNotNull(m_has_metric), "YES", else:"NO")
+| summarize instances = count(), by:{reports_metric}
