@@ -1,9 +1,6 @@
-timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
-  by:{`dt.entity.sql:db2_host`}, interval:5m
-| lookup [
-    fetch `dt.entity.sql:db2_host`
-    | fields id, host_name = Hostname
-  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
-| filter isNotNull(h_host_name)
-| filter in(h_host_name, array($host))
-| fields timeframe, interval, host = h_host_name, logical_reads, `dt.entity.sql:db2_host`
+timeseries r = sum(db2.bp.total_logical_reads.count),
+  by:{`dt.entity.sql:db2_host`, device.name, device.address, instance_name}, from:-24h
+| fieldsAdd db2_host_name = entityName(`dt.entity.sql:db2_host`)
+| fields db2_host_name, device.name, device.address, instance_name
+| sort db2_host_name asc
+| limit 200
