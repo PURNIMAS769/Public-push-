@@ -1,29 +1,56 @@
-Option 1: Clear and professional
+// --- Step 1: Hosts from tags (AIXDB2 / LinuxDB2) + availability ---
+timeseries avail = avg(dt.host.availability), by:{dt.entity.host}, from:-30m
+| filter in(dt.entity.host, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
+    or in(dt.entity.host, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
+| fieldsAdd availability_pct = round(arrayAvg(avail))
+| fieldsAdd host_name = entityName(dt.entity.host)
+| filter isNotNull(host_name)
+| filter in(host_name, array($host))
 
-Hi Team,
+// --- Step 2: Active problems, resolved to a host NAME ---
+| lookup [
+    fetch dt.davis.problems
+    | filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
+    | filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
+       or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
+       or matchesValue(affected_entity_types, "dt.entity.host")
+    | expand affected_entity_ids
+    // instance-level problem -> its parent db2_host
+    | lookup [
+        fetch `dt.entity.sql:db2_instance`
+        | fieldsAdd host_ref = runs_on[`dt.entity.sql:db2_host`]
+        | fields id, host_ref
+      ], sourceField:affected_entity_ids, lookupField:id, prefix:"i_"
+    | fieldsAdd resolved_id = if(isNotNull(i_host_ref), i_host_ref, else: affected_entity_ids)
+    // db2_host id -> hostname
+    | lookup [
+        fetch `dt.entity.sql:db2_host`
+        | fields id, db2_hostname = Hostname
+      ], sourceField:resolved_id, lookupField:id, prefix:"h_"
+    // problems raised directly on the OneAgent host -> host name
+    | lookup [
+        fetch dt.entity.host
+        | fields id, oa_hostname = entity.name
+      ], sourceField:resolved_id, lookupField:id, prefix:"o_"
+    | fieldsAdd problem_host = coalesce(h_db2_hostname, o_oa_hostname)
+    | filter isNotNull(problem_host)
+    | summarize problem_count = countDistinctExact(event.id), by:{problem_host}
+  ], sourceField:host_name, lookupField:problem_host, prefix:"p_"
 
-We are receiving high memory and CPU utilization alerts on node arop04-ghgsn-worker-northcentralus-arize-44c5w in the P04 cluster. Upon checking, we found that druid-historical-1 is consuming high memory and CPU.
+// --- Step 3: Verdict ---
+| fieldsAdd health_status = if(availability_pct >= 100 and isNull(p_problem_host), "HEALTHY", else:"UNHEALTHY")
+| fields host_name, availability_pct, p_problem_count, health_status, dt.entity.host
+| sort health_status desc, availability_pct asc
+| limit 2000
 
-Could you please have a look and investigate the issue?
 
-Thanks & Regards,
-
-Option 2: Simple and direct
-
-Hi Team,
-
-We are getting memory and CPU utilization alerts on node arop04-ghgsn-worker-northcentralus-arize-44c5w in the P04 cluster. We checked and found that druid-historical-1 is consuming high memory and CPU.
-
-Could you please check and let us know what is causing the high utilization?
-
-Thanks & Regards,
-
-Option 3: More technical
-
-Hi Team,
-
-We are receiving high CPU and memory utilization alerts for node arop04-ghgsn-worker-northcentralus-arize-44c5w in the P04 cluster. During our initial investigation, we observed that druid-historical-1 is consuming a significant amount of CPU and memory resources.
-
-Could you please investigate the resource consumption and advise on the cause and any required action?
-
-Thanks & Regards,
+| filter not(in(toLowercase(host_name), array(
+    "pwausxtsmmgt03.app.hcscint.net",
+    "pwausligapp03.app.hcscint.net",
+    "pwauslmdmapp07.app.hcscint.net",
+    "pwausldsapp13.app.hcscint.net",
+    "pwausltsmoc01.app.hcscint.net",
+    "pwausligapp04.app.hcscint.net",
+    "pwausltsmmgt21.app.hcscint.net",
+    "pwausldsapp16.app.hcscint.net"
+)))
