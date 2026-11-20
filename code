@@ -1,13 +1,16 @@
-fetch dt.entity.host
-| filter in(id, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
-    or in(id, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
-| fieldsAdd host_name = entity.name
-| filter isNotNull(host_name)
-| fieldsAdd host_key = toLowercase(splitString(host_name, ".")[0])
-| filter not(in(host_key, array(
-    "pwausxtsmmgt03", "pwausligapp03", "pwauslmdmapp07", "pwausldsapp13",
-    "pwausltsmoc01", "pwausligapp04", "pwausltsmmgt21", "pwausldsapp16"
-  )))
-| summarize count(), by:{host_name}
-| fields host_name
-| sort host_name asc
+fetch `dt.entity.sql:db2_instance`
+| fieldsAdd host_id = runs_on[`dt.entity.host`]
+| lookup [
+    fetch dt.entity.host
+    | filter in(id, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
+        or in(id, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
+    | fieldsAdd host_name = entity.name
+    | filter in(host_name, array($host))
+    | fields id, host_name
+  ], sourceField:host_id, lookupField:id, prefix:"h_"
+| filter isNotNull(h_host_name)
+| fieldsAdd instance_name = entity.name
+| filter isNotNull(instance_name)
+| summarize count(), by:{instance_name}
+| fields instance_name
+| sort instance_name asc
