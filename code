@@ -1,42 +1,24 @@
-fetch dt.davis.problems, from:-60d
-| filter not(dt.davis.is_duplicate) and event.status == "ACTIVE"
-| filter matchesValue(affected_entity_types, "dt.entity.sql:db2_host")
-      or matchesValue(affected_entity_types, "dt.entity.sql:db2_instance")
-      or matchesValue(affected_entity_types, "dt.entity.host")
-| expand affected_entity_ids
-// instance-level problem -> its parent db2_host
-| lookup [
-    fetch `dt.entity.sql:db2_instance`
-    | fieldsAdd host_ref = runs_on[`dt.entity.sql:db2_host`]
-    | fields id, host_ref
-  ], sourceField:affected_entity_ids, lookupField:id, prefix:"i_"
-| fieldsAdd resolved_id = if(isNotNull(i_host_ref), i_host_ref, else: affected_entity_ids)
-// db2_host id -> hostname
+timeseries mem = avg(db2.memory_usage),
+  by:{`dt.entity.sql:db2_host`} //, from:-2h
+| fieldsAdd mem_pct = round(arrayAvg(mem), decimals:1)
+// db2_host id -> hostname (short-name key)
 | lookup [
     fetch `dt.entity.sql:db2_host`
-    | fields id, db2_hostname = Hostname
-  ], sourceField:resolved_id, lookupField:id, prefix:"h_"
-// OneAgent host id -> hostname
-| lookup [
-    fetch dt.entity.host
-    | fields id, oa_hostname = entity.name
-  ], sourceField:resolved_id, lookupField:id, prefix:"o_"
-| fieldsAdd problem_host = coalesce(h_db2_hostname, o_oa_hostname)
-| filter isNotNull(problem_host)
-| fieldsAdd host_key = toLowercase(splitString(problem_host, ".")[0])
-// keep only problems on the tag-based host list (AIXDB2 / LinuxDB2, minus excluded servers)
+    | fieldsAdd host_key = toLowercase(splitString(Hostname, ".")[0])
+    | fields id, host_key
+  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
+| filter isNotNull(h_host_key)
+// keep only the tag-based hosts selected in $host (AIXDB2 / LinuxDB2, minus excluded servers)
 | lookup [
     fetch dt.entity.host
     | filter in(id, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
         or in(id, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
-    | fieldsAdd host_key = toLowercase(splitString(entity.name, ".")[0])
-    | filter not(in(host_key, array(
-        "pwausxtsmmgt03", "pwausligapp03", "pwauslmdmapp07", "pwausldsapp13",
-        "pwausltsmoc01", "pwausligapp04", "pwausltsmmgt21", "pwausldsapp16"
-      )))
-    | fields host_key
-  ], sourceField:host_key, lookupField:host_key, prefix:"a_"
-| filter isNotNull(a_host_key)
-| summarize alert_count = countDistinctExact(display_id), by:{event.category}
-| fields event.category, alert_count
-| sort alert_count desc
+    | fieldsAdd host_name = entity.name
+    | filter in(host_name, array($host))
+    | fieldsAdd host_key = toLowercase(splitString(host_name, ".")[0])
+    | fields host_key, selected_host = host_name
+  ], sourceField:h_host_key, lookupField:host_key, prefix:"s_"
+| filter isNotNull(s_selected_host)
+| fields Host = s_selected_host, mem_pct, `dt.entity.sql:db2_host`
+| sort mem_pct desc
+| limit 20
