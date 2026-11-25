@@ -1,3 +1,16 @@
 fetch dt.entity.custom_device
 | filter in(entity.name, array("taznmizvvsq08", "tazsmizvvsq08"))
-| fields id, entity.name
+| fieldsAdd tags, customProperties, detectedName, dnsNames, ipAddress
+| fields id, entity.name, tags, customProperties, detectedName, dnsNames, ipAddress
+
+
+timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
+           by:{dt.entity.custom_device, azure.resource.name, azure.resource.group},
+           from:-24h
+| filter in(entityName(dt.entity.custom_device), array("taznmizvvsq08", "tazsmizvvsq08"))
+      or in(azure.resource.name, array("taznmizvvsq08", "tazsmizvvsq08"))
+| fieldsAdd avg_cpu = round(arrayAvg(cpu), decimals:4),
+            max_cpu = round(arrayMax(cpu), decimals:4),
+            name = coalesce(entityName(dt.entity.custom_device), azure.resource.name)
+| fields name, dt.entity.custom_device, azure.resource.group, avg_cpu, max_cpu
+| sort name asc, max_cpu desc
