@@ -1,19 +1,21 @@
-timeseries logical_reads = sum(db2.bp.total_logical_reads.count),
-  by:{`dt.entity.sql:db2_host`}, interval:5m
+timeseries inv = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
+           by:{azure.resource.name, azure.resource.group, azure.location},
+           filter:{dt.da.source == "azure-metric-poller"},
+           from:-24h, to:now()
+| fields mi_name = azure.resource.name,
+         resource_group = azure.resource.group,
+         location = azure.location
 | lookup [
-    fetch `dt.entity.sql:db2_host`
-    | fieldsAdd host_key = lower(splitString(Hostname, ".")[0])
-    | fields id, host_key
-  ], sourceField:`dt.entity.sql:db2_host`, lookupField:id, prefix:"h_"
-| filter isNotNull(h_host_key)
-| lookup [
-    fetch dt.entity.host
-    | filter in(id, classicEntitySelector("type(HOST),tag(\"AIXDB2\")"))
-        or in(id, classicEntitySelector("type(HOST),tag(\"LinuxDB2\")"))
-    | fieldsAdd host_name = entity.name
-    | filter in(host_name, array($host))
-    | fieldsAdd host_key = lower(splitString(host_name, ".")[0])
-    | fields host_key, selected_host = host_name
-  ], sourceField:h_host_key, lookupField:host_key, prefix:"s_"
-| filter isNotNull(s_selected_host)
-| fields timeframe, interval, host = s_selected_host, logical_reads, `dt.entity.sql:db2_host`
+    timeseries recent = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
+               by:{azure.resource.name},
+               filter:{dt.da.source == "azure-metric-poller"},
+               from:-30m, to:now()
+    | fieldsAdd recent_points = arraySize(arrayRemoveNulls(recent))
+  ], sourceField:mi_name, lookupField:azure.resource.name, fields:{recent_points}
+| fieldsAdd recent_points = coalesce(recent_points, 0)
+| fieldsAdd status = if(recent_points > 0, "Up", else:"Down")
+| fieldsAdd status_value = if(status == "Up", 1, else:0)
+| fieldsAdd environment = if(contains(resource_group, "_dev_"), "Dev",
+                          else: if(contains(resource_group, "_test_"), "Test", else:"Other"))
+| fields mi_name, status, status_value, environment, resource_group, location, recent_points
+| sort status_value asc, mi_name asc
