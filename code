@@ -1,8 +1,9 @@
 timeseries vc = avg(cloud.azure.microsoft_sql.managedinstances.virtual_core_count),
-           by:{azure.resource.name},
-           filter:{dt.da.source == "azure-metric-poller"},
-           from:-24h, to:now()
-| fieldsAdd vcores = arrayLast(arrayRemoveNulls(vc))
-| summarize Total_vCores = sum(vcores),
-            MI_count = count(),
-            MIs_without_value = countIf(isNull(vcores))
+           by:{azure.resource.name, azure.resource.group},
+           filter:{dt.da.source == "azure-metric-poller"}
+| fieldsAdd vcores = arrayAvg(vc)
+| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
+                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other"))
+| fields mi_name = azure.resource.name, vcores, environment
+| sort vcores desc
+| limit 20
