@@ -5,5 +5,14 @@ timeseries vc = avg(cloud.azure.microsoft_sql.managedinstances.virtual_core_coun
 | fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
                           else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other"))
 | fields mi_name = azure.resource.name, vcores, environment
+// --- classic CUSTOM_DEVICE id for Open with ---
+| lookup [
+    timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.virtual_core_count),
+               by:{dt.entity.custom_device},
+               filter:{isNotNull(dt.entity.custom_device)},
+               from:-24h, to:now()
+    | fields cd_name = entityName(dt.entity.custom_device), cd_id = dt.entity.custom_device
+  ], sourceField:mi_name, lookupField:cd_name, fields:{cd_id}
+| fields mi_name, vcores, environment, dt.entity.custom_device = cd_id
 | sort vcores desc
 | limit 20
