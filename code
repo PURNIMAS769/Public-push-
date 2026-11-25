@@ -1,21 +1,6 @@
 timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-           by:{azure.resource.name, azure.resource.group},
-           filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd avg_cpu = round(arrayAvg(cpu), decimals:2),
-            max_cpu = round(arrayMax(cpu), decimals:2)
-| fieldsAdd cpu_status = if(isNull(avg_cpu), "No data",
-                         else: if(avg_cpu >= 90, "Critical",
-                         else: if(avg_cpu >= 80, "Warning", else: "Healthy")))
-| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
-                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other"))
-| fields mi_name = azure.resource.name, avg_cpu, max_cpu, cpu_status, environment
-// --- classic CUSTOM_DEVICE id for Open with ---
-| lookup [
-    timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-               by:{dt.entity.custom_device},
-               filter:{isNotNull(dt.entity.custom_device)},
-               from:-24h, to:now()
-    | fields cd_name = entityName(dt.entity.custom_device), cd_id = dt.entity.custom_device
-  ], sourceField:mi_name, lookupField:cd_name, fields:{cd_id}
-| fields mi_name, avg_cpu, max_cpu, cpu_status, environment, dt.entity.custom_device = cd_id
-| sort avg_cpu desc
+           by:{azure.resource.name, azure.resource.group, azure.subscription, azure.location, dt.smartscape_source.id},
+           filter:{dt.da.source == "azure-metric-poller"
+                   and in(azure.resource.name, array("taznmizvvsq08", "tazsmizvvsq08"))}
+| fieldsAdd avg_cpu = arrayAvg(cpu)
+| fields azure.resource.name, azure.resource.group, azure.subscription, azure.location, dt.smartscape_source.id, avg_cpu
