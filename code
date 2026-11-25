@@ -1,16 +1,32 @@
 fetch dt.entity.custom_device
-| filter in(entity.name, array("taznmizvvsq08", "tazsmizvvsq08"))
-| fieldsAdd tags, customProperties, detectedName, dnsNames, ipAddress
-| fields id, entity.name, tags, customProperties, detectedName, dnsNames, ipAddress
+| fieldsAdd rg = lower(toString(customProperties[`Resource group`]))
+| filter contains(rg, "app00046507")
+| fields id, entity.name, rg
+| sort entity.name asc
+
 
 
 timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-           by:{dt.entity.custom_device, azure.resource.name, azure.resource.group},
-           from:-24h
-| filter in(entityName(dt.entity.custom_device), array("taznmizvvsq08", "tazsmizvvsq08"))
-      or in(azure.resource.name, array("taznmizvvsq08", "tazsmizvvsq08"))
-| fieldsAdd avg_cpu = round(arrayAvg(cpu), decimals:4),
-            max_cpu = round(arrayMax(cpu), decimals:4),
-            name = coalesce(entityName(dt.entity.custom_device), azure.resource.name)
-| fields name, dt.entity.custom_device, azure.resource.group, avg_cpu, max_cpu
-| sort name asc, max_cpu desc
+           by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
+           filter:{dt.da.source == "azure-metric-poller"}
+| fieldsAdd avg_cpu = round(arrayAvg(cpu), decimals:2),
+            max_cpu = round(arrayMax(cpu), decimals:2)
+| fieldsAdd cpu_status = if(isNull(avg_cpu), "No data",
+                         else: if(avg_cpu >= 90, "Critical",
+                         else: if(avg_cpu >= 80, "Warning", else: "Healthy")))
+| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
+                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other")),
+            rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
+                      else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
+| fieldsAdd match_key = concat(lower(azure.resource.name), "|", lower(azure.resource.group))
+// --- classic CUSTOM_DEVICE id matched on name + resource group ---
+| lookup [
+    fetch dt.entity.custom_device
+    | fieldsAdd rg = lower(toString(customProperties[`Resource group`]))
+    | filter contains(rg, "app00046507")
+    | fields cd_id = id, key = concat(lower(entity.name), "|", rg)
+  ], sourceField:match_key, lookupField:key, fields:{cd_id}
+| fields mi_name = azure.resource.name, rg_type, avg_cpu, max_cpu, cpu_status, environment,
+         dt.entity.custom_device = cd_id,
+         resource_group = azure.resource.group, az_id = dt.smartscape_source.id
+| sort avg_cpu desc
