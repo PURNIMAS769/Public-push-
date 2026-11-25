@@ -1,18 +1,28 @@
-timeseries vc = avg(cloud.azure.microsoft_sql.managedinstances.virtual_core_count),
+timeseries used     = avg(cloud.azure.microsoft_sql.managedinstances.storage_space_used_mb),
+           reserved = avg(cloud.azure.microsoft_sql.managedinstances.reserved_storage_mb),
            by:{azure.resource.name, azure.resource.group},
            filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd vcores = arrayAvg(vc)
+| fieldsAdd used_mb     = arrayAvg(used),
+            reserved_mb = arrayAvg(reserved)
+| fieldsAdd storage_pct = if(reserved_mb > 0, round(used_mb / reserved_mb * 100, decimals:2))
+| fieldsAdd used_gb     = round(used_mb / 1024, decimals:1),
+            reserved_gb = round(reserved_mb / 1024, decimals:1),
+            free_gb     = round((reserved_mb - used_mb) / 1024, decimals:1)
+| fieldsAdd storage_status = if(isNull(storage_pct), "No data",
+                             else: if(storage_pct >= 90, "Critical",
+                             else: if(storage_pct >= 80, "Warning", else: "Healthy")))
 | fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
                           else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other"))
-| fields mi_name = azure.resource.name, vcores, environment
+| fields mi_name = azure.resource.name, storage_pct, storage_status,
+         used_gb, free_gb, reserved_gb, environment
 // --- classic CUSTOM_DEVICE id for Open with ---
 | lookup [
-    timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.virtual_core_count),
+    timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.storage_space_used_mb),
                by:{dt.entity.custom_device},
                filter:{isNotNull(dt.entity.custom_device)},
                from:-24h, to:now()
     | fields cd_name = entityName(dt.entity.custom_device), cd_id = dt.entity.custom_device
   ], sourceField:mi_name, lookupField:cd_name, fields:{cd_id}
-| fields mi_name, vcores, environment, dt.entity.custom_device = cd_id
-| sort vcores desc
-| limit 20
+| fields mi_name, storage_pct, storage_status, used_gb, free_gb, reserved_gb,
+         environment, dt.entity.custom_device = cd_id
+| sort storage_pct desc
