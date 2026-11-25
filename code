@@ -1,6 +1,3 @@
-timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-           by:{azure.resource.name, azure.resource.group, azure.subscription, azure.location, dt.smartscape_source.id},
-           filter:{dt.da.source == "azure-metric-poller"
-                   and in(azure.resource.name, array("taznmizvvsq08", "tazsmizvvsq08"))}
-| fieldsAdd avg_cpu = arrayAvg(cpu)
-| fields azure.resource.name, azure.resource.group, azure.subscription, azure.location, dt.smartscape_source.id, avg_cpu
+fetch dt.entity.custom_device
+| filter in(entity.name, array("taznmizvvsq08", "tazsmizvvsq08"))
+| fields id, entity.name
