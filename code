@@ -1,26 +1,21 @@
-fetch dt.davis.problems
-| filter not(dt.davis.is_duplicate)
-| dedup {event.id}, sort:{timestamp desc}
-| expand affected_entity_ids
-| fieldsAdd entity_id = toString(affected_entity_ids)
-// --- keep only problems on our MIs (classic + Gen3 ids) ---
+timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
+           by:{azure.resource.name, azure.resource.group},
+           filter:{dt.da.source == "azure-metric-poller"}
+| fieldsAdd avg_cpu = round(arrayAvg(cpu), decimals:2),
+            max_cpu = round(arrayMax(cpu), decimals:2)
+| fieldsAdd cpu_status = if(isNull(avg_cpu), "No data",
+                         else: if(avg_cpu >= 90, "Critical",
+                         else: if(avg_cpu >= 80, "Warning", else: "Healthy")))
+| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
+                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other"))
+| fields mi_name = azure.resource.name, avg_cpu, max_cpu, cpu_status, environment
+// --- classic CUSTOM_DEVICE id for Open with ---
 | lookup [
     timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
                by:{dt.entity.custom_device},
                filter:{isNotNull(dt.entity.custom_device)},
                from:-24h, to:now()
-    | fields id = toString(dt.entity.custom_device),
-             mi_name = entityName(dt.entity.custom_device)
-    | append [
-        timeseries a = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-                   by:{dt.smartscape_source.id, azure.resource.name},
-                   filter:{dt.da.source == "azure-metric-poller"},
-                   from:-24h, to:now()
-        | fields id = toString(dt.smartscape_source.id),
-                 mi_name = azure.resource.name
-      ]
-  ], sourceField:entity_id, lookupField:id, fields:{mi_name}
-| filter isNotNull(mi_name)
-// --- count each problem once, at its start time ---
-| dedup {event.id}
-| makeTimeseries Problems = count(default:0), by:{Severity = event.category}, time:event.start
+    | fields cd_name = entityName(dt.entity.custom_device), cd_id = dt.entity.custom_device
+  ], sourceField:mi_name, lookupField:cd_name, fields:{cd_id}
+| fields mi_name, avg_cpu, max_cpu, cpu_status, environment, dt.entity.custom_device = cd_id
+| sort avg_cpu desc
