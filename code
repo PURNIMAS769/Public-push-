@@ -1,28 +1,27 @@
-timeseries used     = avg(cloud.azure.microsoft_sql.managedinstances.storage_space_used_mb),
-           reserved = avg(cloud.azure.microsoft_sql.managedinstances.reserved_storage_mb),
-           by:{azure.resource.name, azure.resource.group},
-           filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd used_mb     = arrayAvg(used),
-            reserved_mb = arrayAvg(reserved)
-| fieldsAdd storage_pct = if(reserved_mb > 0, round(used_mb / reserved_mb * 100, decimals:2))
-| fieldsAdd used_gb     = round(used_mb / 1024, decimals:1),
-            reserved_gb = round(reserved_mb / 1024, decimals:1),
-            free_gb     = round((reserved_mb - used_mb) / 1024, decimals:1)
-| fieldsAdd storage_status = if(isNull(storage_pct), "No data",
-                             else: if(storage_pct >= 90, "Critical",
-                             else: if(storage_pct >= 80, "Warning", else: "Healthy")))
-| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
-                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other"))
-| fields mi_name = azure.resource.name, storage_pct, storage_status,
-         used_gb, free_gb, reserved_gb, environment
-// --- classic CUSTOM_DEVICE id for Open with ---
+fetch dt.davis.problems, from:-30d
+| filter not(dt.davis.is_duplicate)
+| dedup {event.id}, sort:{timestamp desc}
+| filter event.status == "ACTIVE"
+| expand affected_entity_ids
+// --- keep only problems on our MIs (classic + Gen3 ids) ---
 | lookup [
-    timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.storage_space_used_mb),
+    timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
                by:{dt.entity.custom_device},
                filter:{isNotNull(dt.entity.custom_device)},
                from:-24h, to:now()
-    | fields cd_name = entityName(dt.entity.custom_device), cd_id = dt.entity.custom_device
-  ], sourceField:mi_name, lookupField:cd_name, fields:{cd_id}
-| fields mi_name, storage_pct, storage_status, used_gb, free_gb, reserved_gb,
-         environment, dt.entity.custom_device = cd_id
-| sort storage_pct desc
+    | fields id = toString(dt.entity.custom_device),
+             mi_name = entityName(dt.entity.custom_device)
+    | append [
+        timeseries a = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
+                   by:{dt.smartscape_source.id, azure.resource.name},
+                   filter:{dt.da.source == "azure-metric-poller"},
+                   from:-24h, to:now()
+        | fields id = toString(dt.smartscape_source.id),
+                 mi_name = azure.resource.name
+      ]
+  ], sourceField:affected_entity_ids, lookupField:id, fields:{mi_name}
+| filter isNotNull(mi_name)
+// --- count each active problem once ---
+| dedup {event.id}
+| summarize Active_Alerts = count(), by:{Severity = event.category}
+| sort Active_Alerts desc
