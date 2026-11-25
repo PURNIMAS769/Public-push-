@@ -1,50 +1,8 @@
-timeseries inv = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-           by:{azure.resource.name, dt.smartscape_source.id},
+timeseries vc = avg(cloud.azure.microsoft_sql.managedinstances.virtual_core_count),
+           by:{azure.resource.name},
            filter:{dt.da.source == "azure-metric-poller"},
            from:-24h, to:now()
-| fields mi_name = azure.resource.name,
-         az_id = dt.smartscape_source.id
-// --- recent data check (availability) ---
-| lookup [
-    timeseries recent = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-               by:{azure.resource.name},
-               filter:{dt.da.source == "azure-metric-poller"},
-               from:-30m, to:now()
-    | fieldsAdd recent_points = arraySize(arrayRemoveNulls(recent))
-  ], sourceField:mi_name, lookupField:azure.resource.name, fields:{recent_points}
-// --- classic CUSTOM_DEVICE id for the same MI ---
-| lookup [
-    timeseries c = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-               by:{dt.entity.custom_device},
-               filter:{isNotNull(dt.entity.custom_device)},
-               from:-24h, to:now()
-    | fields cd_name = entityName(dt.entity.custom_device), cd_id = dt.entity.custom_device
-  ], sourceField:mi_name, lookupField:cd_name, fields:{cd_id}
-// --- active Davis problems on Gen3 entity ---
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | filter not(dt.davis.is_duplicate)
-    | dedup {event.id}, sort:{timestamp desc}
-    | filter event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize active_alerts = countDistinct(event.id), by:{affected_entity_ids}
-  ], sourceField:az_id, lookupField:affected_entity_ids, prefix:"az."
-// --- active Davis problems on classic entity ---
-| lookup [
-    fetch dt.davis.problems, from:-30d
-    | filter not(dt.davis.is_duplicate)
-    | dedup {event.id}, sort:{timestamp desc}
-    | filter event.status == "ACTIVE"
-    | expand affected_entity_ids
-    | summarize active_alerts = countDistinct(event.id), by:{affected_entity_ids}
-  ], sourceField:cd_id, lookupField:affected_entity_ids, prefix:"cd."
-// --- status per MI ---
-| fieldsAdd recent_points = coalesce(recent_points, 0),
-            active_alerts = coalesce(az.active_alerts, 0) + coalesce(cd.active_alerts, 0)
-| fieldsAdd status = if(recent_points == 0, "Down",
-                     else: if(active_alerts > 0, "Unhealthy", else: "Up"))
-// --- counts ---
-| summarize Total     = count(),
-            Up        = countIf(status == "Up"),
-            Unhealthy = countIf(status == "Unhealthy"),
-            Down      = countIf(status == "Down")
+| fieldsAdd vcores = arrayLast(arrayRemoveNulls(vc))
+| summarize Total_vCores = sum(vcores),
+            MI_count = count(),
+            MIs_without_value = countIf(isNull(vcores))
