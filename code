@@ -1,7 +1,6 @@
-fetch dt.davis.problems, from:-30d
+fetch dt.davis.problems
 | filter not(dt.davis.is_duplicate)
 | dedup {event.id}, sort:{timestamp desc}
-| filter event.status == "ACTIVE"
 | expand affected_entity_ids
 | fieldsAdd entity_id = toString(affected_entity_ids)
 // --- keep only problems on our MIs (classic + Gen3 ids) ---
@@ -22,10 +21,6 @@ fetch dt.davis.problems, from:-30d
       ]
   ], sourceField:entity_id, lookupField:id, fields:{mi_name}
 | filter isNotNull(mi_name)
-// --- one row per problem per MI ---
-| dedup {event.id, mi_name}
-| fieldsAdd open_duration = now() - event.start
-| fieldsAdd dt.entity.custom_device = if(startsWith(entity_id, "CUSTOM_DEVICE"), entity_id)
-| fields display_id, mi_name, Severity = event.category, Problem = event.name,
-         Started = event.start, open_duration, event.id, dt.entity.custom_device
-| sort Started asc
+// --- count each problem once, at its start time ---
+| dedup {event.id}
+| makeTimeseries Problems = count(default:0), by:{Severity = event.category}, time:event.start
