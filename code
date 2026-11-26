@@ -1,10 +1,20 @@
-timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
+timeseries io = avg(cloud.azure.microsoft_sql.managedinstances.io_requests),
            by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
            filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd avg_cpu = arrayAvg(cpu)
-| fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
+| fieldsAdd avg_io = round(arrayAvg(io), decimals:2),
+            max_io = round(arrayMax(io), decimals:2)
+| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
+                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other")),
+            rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
                       else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
-| sort avg_cpu desc
-| limit 10
-| fields timeframe, interval, mi, cpu
+| fieldsAdd match_key = concat(lower(azure.resource.name), "|", lower(azure.resource.group))
+// --- classic CUSTOM_DEVICE id (name + resource group) ---
+| lookup [
+    fetch dt.entity.custom_device
+    | fieldsAdd rg = lower(toString(customProperties[`Resource group`]))
+    | filter contains(rg, "app00046507")
+    | fields cd_id = id, key = concat(lower(entity.name), "|", rg)
+  ], sourceField:match_key, lookupField:key, fields:{cd_id}
+| fields mi_name = azure.resource.name, rg_type, avg_io, max_io, environment,
+         dt.entity.custom_device = cd_id
+| sort avg_io desc
