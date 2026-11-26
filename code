@@ -1,40 +1,24 @@
 timeseries rd = avg(cloud.azure.microsoft_sql.managedinstances.io_bytes_read),
            by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
            filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd avg_read_mb = round(arrayAvg(rd) / 1048576, decimals:2),
-            max_read_mb = round(arrayMax(rd) / 1048576, decimals:2)
-| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
-                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other")),
-            rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
+| fieldsAdd avg_read = arrayAvg(rd)
+| fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
                       else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd match_key = concat(lower(azure.resource.name), "|", lower(azure.resource.group))
-| lookup [
-    fetch dt.entity.custom_device
-    | fieldsAdd rg = lower(toString(customProperties[`Resource group`]))
-    | filter contains(rg, "app00046507")
-    | fields cd_id = id, key = concat(lower(entity.name), "|", rg)
-  ], sourceField:match_key, lookupField:key, fields:{cd_id}
-| fields mi_name = azure.resource.name, rg_type, avg_read_mb, max_read_mb,
-         environment, dt.entity.custom_device = cd_id
-| sort avg_read_mb desc
+| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
+| fieldsAdd read_mb = rd[] / 1048576
+| sort avg_read desc
+| limit 10
+| fields timeframe, interval, mi, read_mb
 
 
 timeseries wr = avg(cloud.azure.microsoft_sql.managedinstances.io_bytes_written),
            by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
            filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd avg_written_mb = round(arrayAvg(wr) / 1048576, decimals:2),
-            max_written_mb = round(arrayMax(wr) / 1048576, decimals:2)
-| fieldsAdd environment = if(contains(azure.resource.group, "_dev_"), "Dev",
-                          else: if(contains(azure.resource.group, "_test_"), "Test", else: "Other")),
-            rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
+| fieldsAdd avg_written = arrayAvg(wr)
+| fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
                       else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd match_key = concat(lower(azure.resource.name), "|", lower(azure.resource.group))
-| lookup [
-    fetch dt.entity.custom_device
-    | fieldsAdd rg = lower(toString(customProperties[`Resource group`]))
-    | filter contains(rg, "app00046507")
-    | fields cd_id = id, key = concat(lower(entity.name), "|", rg)
-  ], sourceField:match_key, lookupField:key, fields:{cd_id}
-| fields mi_name = azure.resource.name, rg_type, avg_written_mb, max_written_mb,
-         environment, dt.entity.custom_device = cd_id
-| sort avg_written_mb desc
+| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
+| fieldsAdd written_mb = wr[] / 1048576
+| sort avg_written desc
+| limit 10
+| fields timeframe, interval, mi, written_mb
