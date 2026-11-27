@@ -1,40 +1,6 @@
-timeseries used     = avg(cloud.azure.microsoft_sql.managedinstances.storage_space_used_mb),
-           reserved = avg(cloud.azure.microsoft_sql.managedinstances.reserved_storage_mb),
-           by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
-           filter:{dt.da.source == "azure-metric-poller"},
-           from:-14d, to:now(), interval:1h
-| fieldsAdd storage_pct = used[] / reserved[] * 100
-| fieldsAdd avg_pct = arrayAvg(storage_pct)
-| fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
-                      else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
-| sort avg_pct desc
-| limit 5
-| fields timeframe, interval, mi, storage_pct
-
-
-timeseries cpu = avg(cloud.azure.microsoft_sql.managedinstances.avg_cpu_percent),
-           by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
-           filter:{dt.da.source == "azure-metric-poller"},
-           from:-7d, to:now(), interval:15m
-| fieldsAdd avg_cpu = arrayAvg(cpu)
-| fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
-                      else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
-| sort avg_cpu desc
-| limit 5
-| fields timeframe, interval, mi, cpu
-
-
-
-timeseries io = avg(cloud.azure.microsoft_sql.managedinstances.io_requests),
-           by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
-           filter:{dt.da.source == "azure-metric-poller"},
-           from:-7d, to:now(), interval:15m
-| fieldsAdd avg_io = arrayAvg(io)
-| fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
-                      else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
-| sort avg_io desc
-| limit 5
-| fields timeframe, interval, mi, io
+metrics
+| filter startsWith(metric.key, "cloud.azure.microsoft_sql.servers.databases")
+     or startsWith(metric.key, "cloud.azure.microsoft_sql.elasticpools")
+| filter contains(metric.key, "memory") or contains(metric.key, "mem")
+| summarize series = count(), by:{metric.key}
+| sort metric.key asc
