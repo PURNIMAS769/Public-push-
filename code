@@ -1,6 +1,18 @@
 metrics
-| filter startsWith(metric.key, "cloud.azure.microsoft_sql.servers.databases")
-     or startsWith(metric.key, "cloud.azure.microsoft_sql.elasticpools")
-| filter contains(metric.key, "memory") or contains(metric.key, "mem")
-| summarize series = count(), by:{metric.key}
+| filter startsWith(metric.key, "cloud.azure.microsoft_sql")
+| fieldsAdd group = if(contains(metric.key, ".managedinstances."), "Managed Instance",
+                    else: if(contains(metric.key, ".elasticpools."), "Elastic Pool",
+                    else: if(contains(metric.key, ".datawarehouse."), "Data Warehouse",
+                    else: if(contains(metric.key, ".servers.databases."), "SQL Database", else: "Other"))))
+| summarize series = count(),
+            classic_series = countIf(isNotNull(dt.entity.custom_device)),
+            poller_series  = countIf(dt.da.source == "azure-metric-poller"),
+            by:{group, metric.key}
+| sort group asc, metric.key asc
+
+
+metrics
+| filter startsWith(metric.key, "cloud.azure.microsoft_sql")
+| summarize by:{metric.key}
 | sort metric.key asc
+| limit 200
