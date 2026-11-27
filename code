@@ -1,12 +1,33 @@
 timeseries used     = avg(cloud.azure.microsoft_sql.managedinstances.storage_space_used_mb),
            reserved = avg(cloud.azure.microsoft_sql.managedinstances.reserved_storage_mb),
            by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
-           filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd storage_pct = used[] / reserved[] * 100
-| fieldsAdd avg_pct = arrayAvg(storage_pct)
+           filter:{dt.da.source == "azure-metric-poller"},
+           from:-30d, to:now(), interval:1d
+| fieldsAdd u = arrayRemoveNulls(used),
+            r = arrayRemoveNulls(reserved)
+| fieldsAdd days_of_data = arraySize(u) - 1,
+            first_mb     = arrayFirst(u),
+            last_mb      = arrayLast(u),
+            reserved_mb  = arrayLast(r)
+| fieldsAdd growth_gb_per_day = if(days_of_data > 0,
+                                   round((last_mb - first_mb) / 1024 / days_of_data, decimals:2)),
+            free_gb           = round((reserved_mb - last_mb) / 1024, decimals:1),
+            storage_pct       = round(last_mb / reserved_mb * 100, decimals:1)
+| fieldsAdd days_to_full = if(growth_gb_per_day > 0,
+                              round(free_gb / growth_gb_per_day, decimals:0))
+| fieldsAdd forecast_status = if(isNull(days_to_full), "Stable / shrinking",
+                              else: if(days_to_full <= 30, "Critical",
+                              else: if(days_to_full <= 90, "Warning", else: "Healthy")))
 | fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
                       else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
-| sort avg_pct desc
-| limit 10
-| fields timeframe, interval, mi, storage_pct
+| fieldsAdd match_key = concat(lower(azure.resource.name), "|", lower(azure.resource.group))
+| lookup [
+    fetch dt.entity.custom_device
+    | fieldsAdd rg = lower(toString(customProperties[`Resource group`]))
+    | filter contains(rg, "app00046507")
+    | fields cd_id = id, key = concat(lower(entity.name), "|", rg)
+  ], sourceField:match_key, lookupField:key, fields:{cd_id}
+| fields mi_name = azure.resource.name, rg_type, storage_pct, free_gb,
+         growth_gb_per_day, days_to_full, forecast_status, days_of_data,
+         dt.entity.custom_device = cd_id
+| sort days_to_full asc
