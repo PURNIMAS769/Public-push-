@@ -1,24 +1,12 @@
-timeseries rd = avg(cloud.azure.microsoft_sql.managedinstances.io_bytes_read),
+timeseries used     = avg(cloud.azure.microsoft_sql.managedinstances.storage_space_used_mb),
+           reserved = avg(cloud.azure.microsoft_sql.managedinstances.reserved_storage_mb),
            by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
            filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd avg_read = arrayAvg(rd)
+| fieldsAdd storage_pct = used[] / reserved[] * 100
+| fieldsAdd avg_pct = arrayAvg(storage_pct)
 | fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
                       else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
 | fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
-| fieldsAdd read_mb = rd[] / 1048576
-| sort avg_read desc
+| sort avg_pct desc
 | limit 10
-| fields timeframe, interval, mi, read_mb
-
-
-timeseries wr = avg(cloud.azure.microsoft_sql.managedinstances.io_bytes_written),
-           by:{azure.resource.name, azure.resource.group, dt.smartscape_source.id},
-           filter:{dt.da.source == "azure-metric-poller"}
-| fieldsAdd avg_written = arrayAvg(wr)
-| fieldsAdd rg_type = if(endsWith(azure.resource.group, "_ons"), "ONS",
-                      else: if(endsWith(azure.resource.group, "_ofs"), "OFS", else: "Other"))
-| fieldsAdd mi = concat(azure.resource.name, " (", rg_type, ")")
-| fieldsAdd written_mb = wr[] / 1048576
-| sort avg_written desc
-| limit 10
-| fields timeframe, interval, mi, written_mb
+| fields timeframe, interval, mi, storage_pct
